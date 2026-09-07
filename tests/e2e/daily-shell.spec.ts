@@ -98,7 +98,7 @@ test("desktop sidebar collapses to an accessible navigation rail without losing 
 
   const shell = page.locator(".app-shell");
   const sidebar = page.getByRole("complementary", {
-    name: "Projects and worktrees",
+    name: "Repositories and worktrees",
   });
   const primaryNavigation = sidebar.getByRole("navigation", {
     name: "Primary",
@@ -190,12 +190,9 @@ test("desktop sidebar collapses to an accessible navigation rail without losing 
   await expect(mobileOpen).toBeVisible();
   const responsiveGeometry = await shell.evaluate((element) => ({
     columns: getComputedStyle(element).gridTemplateColumns,
-    sidebarOpacity: getComputedStyle(
-      element.querySelector<HTMLElement>(".sidebar")!,
-    ).opacity,
   }));
   expect(responsiveGeometry.columns.startsWith("0px ")).toBe(true);
-  expect(responsiveGeometry.sidebarOpacity).toBe("0");
+  await expect(sidebar).toHaveCSS("opacity", "0");
 
   await mobileOpen.click();
   await expect(primaryNavigation).toBeVisible();

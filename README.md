@@ -31,6 +31,10 @@ built-in Codex handoff._
 - Let Codex create and coordinate scoped tasks through an authenticated,
   loopback-only MCP endpoint.
 
+The sidebar lists repositories with their branches/worktrees underneath. Each
+repository can be expanded or collapsed independently. Project scopes remain
+available through the top-bar selector and repository setup.
+
 ## Requirements
 
 - 64-bit Windows

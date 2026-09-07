@@ -190,10 +190,6 @@ button {
   margin-top: 25px;
 }
 
-.project-group {
-  margin-bottom: 5px;
-}
-
 .worktree-row,
 .scope-row,
 .add-project {
@@ -203,7 +199,7 @@ button {
   cursor: pointer;
 }
 
-.project-row {
+.repository-row {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
@@ -214,8 +210,8 @@ button {
   font-size: 14px;
 }
 
-.project-expander,
-.project-select {
+.repository-expander,
+.repository-select {
   height: 100%;
   padding: 0;
   border: 0;
@@ -224,12 +220,12 @@ button {
   cursor: pointer;
 }
 
-.project-expander {
+.repository-expander {
   display: grid;
   place-items: center;
 }
 
-.project-select {
+.repository-select {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -239,25 +235,26 @@ button {
   text-align: left;
 }
 
-.project-select span {
+.repository-select span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.project-row:hover,
-.project-row:focus-within {
+.repository-row:hover,
+.repository-row:focus-within,
+.repository-row.is-selected {
   background: var(--surface-hover);
 }
 
-.project-expander:focus-visible,
-.project-select:focus-visible {
+.repository-expander:focus-visible,
+.repository-select:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
 
-.project-expander svg,
-.project-select svg,
+.repository-expander svg,
+.repository-select svg,
 .worktree-row svg {
   width: 14px;
   height: 14px;
@@ -4063,55 +4060,9 @@ button {
   border: 0;
 }
 
-.project-actions {
-  position: relative;
-}
-
-.project-action-trigger {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.scope-action-row:hover > .project-actions .project-action-trigger,
-.scope-action-row:focus-within > .project-actions .project-action-trigger {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.project-actions-menu {
-  top: calc(100% + 4px);
-  right: 0;
-  left: auto;
-  min-width: 150px;
-}
-
-.project-actions-menu button {
-  justify-content: flex-start;
-}
-
 .repository-group {
   display: grid;
-}
-
-.repository-row {
-  padding-left: 25px;
-}
-
-.repository-row > button:first-child {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  height: 28px;
-  padding: 0 6px;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-bottom: 5px;
 }
 
 .scope-action-row .worktree-row {

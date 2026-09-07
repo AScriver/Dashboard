@@ -12,7 +12,6 @@ import {
   Copy,
   Database,
   Download,
-  Ellipsis,
   ExternalLink,
   FileCode2,
   GitBranch,
@@ -412,110 +411,6 @@ function IconButton({
     >
       {children}
     </button>
-  );
-}
-
-function ProjectArchiveMenu({
-  projectId,
-  projectName,
-  onArchive,
-}: {
-  projectId: string;
-  projectName: string;
-  onArchive: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const archiveRef = useRef<HTMLButtonElement>(null);
-  const triggerId = `project-actions-trigger-${projectId}`;
-  const menuId = `project-actions-menu-${projectId}`;
-
-  useEffect(() => {
-    if (!open) return;
-    archiveRef.current?.focus();
-
-    const dismissOnOutsidePointer = (event: PointerEvent) => {
-      if (
-        event.target instanceof Node &&
-        !wrapperRef.current?.contains(event.target)
-      ) {
-        setOpen(false);
-      }
-    };
-    const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setOpen(false);
-      window.requestAnimationFrame(() => triggerRef.current?.focus());
-    };
-
-    window.addEventListener("pointerdown", dismissOnOutsidePointer);
-    window.addEventListener("keydown", dismissOnEscape);
-    return () => {
-      window.removeEventListener("pointerdown", dismissOnOutsidePointer);
-      window.removeEventListener("keydown", dismissOnEscape);
-    };
-  }, [open]);
-
-  return (
-    <div
-      className="project-actions"
-      ref={wrapperRef}
-      onBlur={(event) => {
-        if (
-          event.relatedTarget instanceof Node &&
-          event.currentTarget.contains(event.relatedTarget)
-        ) {
-          return;
-        }
-        setOpen(false);
-      }}
-    >
-      <button
-        id={triggerId}
-        ref={triggerRef}
-        type="button"
-        className="icon-button project-action-trigger"
-        aria-label={`More actions for project ${projectName}`}
-        title={`More actions for project ${projectName}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Ellipsis aria-hidden="true" />
-      </button>
-      {open && (
-        <div
-          id={menuId}
-          className="scope-selector-menu project-actions-menu"
-          role="menu"
-          aria-labelledby={triggerId}
-          onKeyDown={(event) => {
-            if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-              event.preventDefault();
-              archiveRef.current?.focus();
-            }
-          }}
-        >
-          <button
-            ref={archiveRef}
-            type="button"
-            role="menuitem"
-            aria-label={`Archive project ${projectName}`}
-            onClick={() => {
-              setOpen(false);
-              triggerRef.current?.focus();
-              onArchive();
-            }}
-          >
-            <Archive aria-hidden="true" />
-            <span>Archive</span>
-          </button>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -5708,9 +5603,9 @@ export default function App() {
   const [scopeMenuOpen, setScopeMenuOpen] = useState<
     "project" | "worktree" | null
   >(null);
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [collapsedRepositories, setCollapsedRepositories] = useState<
+    Set<string>
+  >(() => new Set());
   const [expandedParents, setExpandedParents] = useState<Set<number>>(() => {
     try {
       return new Set<number>(
@@ -6358,7 +6253,7 @@ export default function App() {
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
-      <aside className="sidebar" aria-label="Projects and worktrees">
+      <aside className="sidebar" aria-label="Repositories and worktrees">
         <div className="product-bar">
           <span>Actionables</span>
           <IconButton
@@ -6466,144 +6361,123 @@ export default function App() {
           </button>
         </nav>
         <div className="project-tree">
-          <div className="tree-label">Projects</div>
-          {sidebarProjects.map((project) => (
-            <div className="project-group" key={project.id}>
-              <div className="scope-action-row">
-                <div className="project-row">
-                  <button
-                    type="button"
-                    className="project-expander"
-                    aria-label={`${collapsedProjects.has(project.id) ? "Expand" : "Collapse"} ${project.name}`}
-                    aria-expanded={!collapsedProjects.has(project.id)}
-                    onClick={() =>
-                      setCollapsedProjects((current) => {
-                        const next = new Set(current);
-                        if (next.has(project.id)) next.delete(project.id);
-                        else next.add(project.id);
-                        return next;
-                      })
-                    }
+          <div className="tree-label">Repositories</div>
+          {sidebarProjects.flatMap((project) =>
+            project.repositories.map((repository) => (
+              <div key={repository.id} className="repository-group">
+                <div className="scope-action-row">
+                  <div
+                    className={`repository-row ${query.repository === repository.id && !query.worktree ? "is-selected" : ""}`}
                   >
-                    {collapsedProjects.has(project.id) ? (
-                      <ChevronRight aria-hidden="true" />
-                    ) : (
-                      <ChevronDown aria-hidden="true" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="project-select"
+                    <button
+                      type="button"
+                      className="repository-expander"
+                      aria-label={`${collapsedRepositories.has(repository.id) ? "Expand" : "Collapse"} repository ${repository.name}`}
+                      aria-expanded={!collapsedRepositories.has(repository.id)}
+                      aria-controls={`repository-worktrees-${repository.id}`}
+                      onClick={() =>
+                        setCollapsedRepositories((current) => {
+                          const next = new Set(current);
+                          if (next.has(repository.id))
+                            next.delete(repository.id);
+                          else next.add(repository.id);
+                          return next;
+                        })
+                      }
+                    >
+                      {collapsedRepositories.has(repository.id) ? (
+                        <ChevronRight aria-hidden="true" />
+                      ) : (
+                        <ChevronDown aria-hidden="true" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="repository-select"
+                      aria-current={
+                        query.repository === repository.id && !query.worktree
+                          ? "page"
+                          : undefined
+                      }
+                      onClick={() =>
+                        patchQuery(
+                          {
+                            project: project.id,
+                            repository: repository.id,
+                            worktree: "",
+                          },
+                          "actionables",
+                        )
+                      }
+                    >
+                      <span>{repository.name}</span>
+                      {repository.archivedAt && (
+                        <Archive aria-label="Archived" />
+                      )}
+                    </button>
+                  </div>
+                  <IconButton
+                    label={`${repository.archivedAt ? "Restore" : "Archive"} repository ${repository.name}`}
                     onClick={() =>
-                      patchQuery(
-                        { project: project.id, repository: "", worktree: "" },
-                        "actionables",
+                      openArchive(
+                        "repository",
+                        repository.id,
+                        repository.name,
+                        repository.version,
+                        Boolean(repository.archivedAt),
                       )
                     }
                   >
-                    <span>{project.name}</span>
-                    {project.archivedAt && <Archive aria-label="Archived" />}
-                  </button>
+                    {repository.archivedAt ? <ArchiveRestore /> : <Archive />}
+                  </IconButton>
                 </div>
-                <ProjectArchiveMenu
-                  projectId={project.id}
-                  projectName={project.name}
-                  onArchive={() =>
-                    openArchive(
-                      "project",
-                      project.id,
-                      project.name,
-                      project.version,
-                      Boolean(project.archivedAt),
-                    )
-                  }
-                />
-              </div>
-              {!collapsedProjects.has(project.id) &&
-                project.repositories.map((repository) => (
-                  <div key={repository.id} className="repository-group">
-                    <div className="scope-action-row repository-row">
-                      <button
-                        type="button"
+                <div
+                  id={`repository-worktrees-${repository.id}`}
+                  hidden={collapsedRepositories.has(repository.id)}
+                >
+                  {repository.worktrees.map((worktree) => (
+                    <div className="scope-action-row" key={worktree.id}>
+                      <WorktreeRow
+                        name={worktree.name}
+                        count={
+                          project.id === activeProject?.id &&
+                          repository.id === activeRepository?.id &&
+                          worktree.id === activeWorktree?.id
+                            ? listQuery.data?.result.openScopeTotal
+                            : undefined
+                        }
+                        selected={query.worktree === worktree.id}
                         onClick={() =>
                           patchQuery(
                             {
                               project: project.id,
                               repository: repository.id,
-                              worktree: "",
+                              worktree: worktree.id,
                             },
                             "actionables",
                           )
                         }
-                      >
-                        <GitBranch /> {repository.name}
-                      </button>
+                      />
                       <IconButton
-                        label={`${repository.archivedAt ? "Restore" : "Archive"} repository ${repository.name}`}
+                        label={`${worktree.archivedAt ? "Restore" : "Archive"} worktree ${worktree.name}`}
                         onClick={() =>
                           openArchive(
-                            "repository",
-                            repository.id,
-                            repository.name,
-                            repository.version,
-                            Boolean(repository.archivedAt),
+                            "worktree",
+                            worktree.id,
+                            worktree.name,
+                            worktree.version,
+                            Boolean(worktree.archivedAt),
                           )
                         }
                       >
-                        {repository.archivedAt ? (
-                          <ArchiveRestore />
-                        ) : (
-                          <Archive />
-                        )}
+                        {worktree.archivedAt ? <ArchiveRestore /> : <Archive />}
                       </IconButton>
                     </div>
-                    {repository.worktrees.map((worktree) => (
-                      <div className="scope-action-row" key={worktree.id}>
-                        <WorktreeRow
-                          name={worktree.name}
-                          count={
-                            project.id === activeProject?.id &&
-                            repository.id === activeRepository?.id &&
-                            worktree.id === activeWorktree?.id
-                              ? listQuery.data?.result.openScopeTotal
-                              : undefined
-                          }
-                          selected={query.worktree === worktree.id}
-                          onClick={() =>
-                            patchQuery(
-                              {
-                                project: project.id,
-                                repository: repository.id,
-                                worktree: worktree.id,
-                              },
-                              "actionables",
-                            )
-                          }
-                        />
-                        <IconButton
-                          label={`${worktree.archivedAt ? "Restore" : "Archive"} worktree ${worktree.name}`}
-                          onClick={() =>
-                            openArchive(
-                              "worktree",
-                              worktree.id,
-                              worktree.name,
-                              worktree.version,
-                              Boolean(worktree.archivedAt),
-                            )
-                          }
-                        >
-                          {worktree.archivedAt ? (
-                            <ArchiveRestore />
-                          ) : (
-                            <Archive />
-                          )}
-                        </IconButton>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-            </div>
-          ))}
+                  ))}
+                </div>
+              </div>
+            )),
+          )}
           <button
             type="button"
             className="add-project"
