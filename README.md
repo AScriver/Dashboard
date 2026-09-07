@@ -35,6 +35,9 @@ The sidebar lists repositories with their branches/worktrees underneath. Each
 repository can be expanded or collapsed independently. Project scopes remain
 available through the top-bar selector and repository setup.
 
+Repository archive actions are no longer shown in the sidebar; scope archival
+through the API is unchanged.
+
 ## Requirements
 
 - 64-bit Windows

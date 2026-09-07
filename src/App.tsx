@@ -6365,71 +6365,52 @@ export default function App() {
           {sidebarProjects.flatMap((project) =>
             project.repositories.map((repository) => (
               <div key={repository.id} className="repository-group">
-                <div className="scope-action-row">
-                  <div
-                    className={`repository-row ${query.repository === repository.id && !query.worktree ? "is-selected" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="repository-expander"
-                      aria-label={`${collapsedRepositories.has(repository.id) ? "Expand" : "Collapse"} repository ${repository.name}`}
-                      aria-expanded={!collapsedRepositories.has(repository.id)}
-                      aria-controls={`repository-worktrees-${repository.id}`}
-                      onClick={() =>
-                        setCollapsedRepositories((current) => {
-                          const next = new Set(current);
-                          if (next.has(repository.id))
-                            next.delete(repository.id);
-                          else next.add(repository.id);
-                          return next;
-                        })
-                      }
-                    >
-                      {collapsedRepositories.has(repository.id) ? (
-                        <ChevronRight aria-hidden="true" />
-                      ) : (
-                        <ChevronDown aria-hidden="true" />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      className="repository-select"
-                      aria-current={
-                        query.repository === repository.id && !query.worktree
-                          ? "page"
-                          : undefined
-                      }
-                      onClick={() =>
-                        patchQuery(
-                          {
-                            project: project.id,
-                            repository: repository.id,
-                            worktree: "",
-                          },
-                          "actionables",
-                        )
-                      }
-                    >
-                      <span>{repository.name}</span>
-                      {repository.archivedAt && (
-                        <Archive aria-label="Archived" />
-                      )}
-                    </button>
-                  </div>
-                  <IconButton
-                    label={`${repository.archivedAt ? "Restore" : "Archive"} repository ${repository.name}`}
+                <div
+                  className={`repository-row ${query.repository === repository.id && !query.worktree ? "is-selected" : ""}`}
+                >
+                  <button
+                    type="button"
+                    className="repository-expander"
+                    aria-label={`${collapsedRepositories.has(repository.id) ? "Expand" : "Collapse"} repository ${repository.name}`}
+                    aria-expanded={!collapsedRepositories.has(repository.id)}
+                    aria-controls={`repository-worktrees-${repository.id}`}
                     onClick={() =>
-                      openArchive(
-                        "repository",
-                        repository.id,
-                        repository.name,
-                        repository.version,
-                        Boolean(repository.archivedAt),
+                      setCollapsedRepositories((current) => {
+                        const next = new Set(current);
+                        if (next.has(repository.id)) next.delete(repository.id);
+                        else next.add(repository.id);
+                        return next;
+                      })
+                    }
+                  >
+                    {collapsedRepositories.has(repository.id) ? (
+                      <ChevronRight aria-hidden="true" />
+                    ) : (
+                      <ChevronDown aria-hidden="true" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="repository-select"
+                    aria-current={
+                      query.repository === repository.id && !query.worktree
+                        ? "page"
+                        : undefined
+                    }
+                    onClick={() =>
+                      patchQuery(
+                        {
+                          project: project.id,
+                          repository: repository.id,
+                          worktree: "",
+                        },
+                        "actionables",
                       )
                     }
                   >
-                    {repository.archivedAt ? <ArchiveRestore /> : <Archive />}
-                  </IconButton>
+                    <span>{repository.name}</span>
+                    {repository.archivedAt && <Archive aria-label="Archived" />}
+                  </button>
                 </div>
                 <div
                   id={`repository-worktrees-${repository.id}`}
