@@ -85,7 +85,12 @@ change that. Validation succeeded with `NODE_PATH` pointing to
 `C:\Code\Actionables\apps\api\node_modules`; dependency declarations and
 lockfiles were left unchanged.
 
-## Remaining broader-suite issues
+## Broader-suite issues at sidebar completion
+
+The user subsequently requested removal of the app's import/export feature. The
+obsolete import/export browser tests were removed with that feature; the full
+remaining 52-test browser suite now passes. See [removal verification](import-export-removal.md).
+The reproduction below remains a record of the earlier sidebar validation.
 
 The unchanged import/export test assumes `portable.actionables[0]` is a seeded
 record with a trusted import baseline. After the capture/triage tests, that

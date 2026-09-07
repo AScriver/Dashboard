@@ -1,6 +1,6 @@
-# Actionables portable data format
+# Internal seed reconciliation format
 
-The Data area and generic 32-item sample seed use the same `actionables-portable` preview, selection-authorization, reconciliation, and transaction service.
+The generic 32-item sample seed uses the `actionables-portable` preview, selection-authorization, reconciliation, and transaction service. The Data page and public import/export routes were removed on September 7, 2026. The schemas and snapshot helpers described below remain internal to seed reconciliation and its regression tests; they are not a supported user backup interface.
 The bundled project names, source references, file paths, and findings are fictional examples intended for public demonstration.
 
 ## Compatibility
@@ -9,7 +9,7 @@ The bundled project names, source references, file paths, and findings are ficti
 - Documents must contain `format: "actionables-portable"` and `schemaVersion: 1`.
 - A future or older unsupported version is rejected. The importer never guesses a migration.
 - Version handling is isolated before schema parsing so an explicit migration can be added later without weakening version 1 validation.
-- The server accepts at most 6 MB; the browser file picker accepts at most 5 MB. JSON nesting is limited to 40 levels.
+- Internal JSON validation limits nesting to 40 levels.
 
 ## Stable identity and ordering
 
@@ -44,7 +44,7 @@ Preview parses and validates without writing any database row, timestamp, activi
 
 Lifecycle integrity is validated during preview. A `Ready` actionable requires a non-empty finding, description, Research note, and validation plan.
 
-The user then confirms skipped conflicts and relationship suggestions. This produces a separate expiring commit authorization bound to the exact selections. Commit rejects:
+The internal caller then authorizes skipped conflicts and relationship suggestions. This produces a separate expiring commit authorization bound to the exact selections. Commit rejects:
 
 - changed content or digest;
 - expired or stale database state;

@@ -293,11 +293,11 @@ For missing migrations only:
 pnpm run db:migrate
 ```
 
-Never edit an already-applied migration. Preserve the database and export a portable backup before recovery.
+Never edit an already-applied migration. Preserve populated databases before recovery. The former JSON import/export workflow has been removed; see [local data and historical backups](backup-restore.md).
 
 ### Database reset or recovery
 
-Portable JSON is the supported backup and restore mechanism. Follow [backup and restore](backup-restore.md). For a disposable database only, stop the app, verify the exact `data\*.db` target, remove it, then rerun `pnpm run db:migrate`. Do not delete a populated database until a verified portable export exists.
+Use a new explicit `DATABASE_URL` for diagnostic or reset runs, preserving populated databases. The current app has no built-in JSON restore workflow. See [local data and historical backups](backup-restore.md).
 
 ### Browser does not start
 
@@ -309,7 +309,3 @@ explicit ports use their reported web URL. For Playwright:
 pnpm exec playwright install chromium
 pnpm run test:e2e
 ```
-
-### Unsupported import version
-
-The MVP accepts portable schema version `1` exactly. Do not hand-edit a future-version export into version 1. Keep the original file and use the application version that created it or a documented future migration tool.

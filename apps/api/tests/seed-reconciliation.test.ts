@@ -4,7 +4,6 @@ import { open, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildApp } from "../src/app.js";
 import { DataImportService, PortableImportError } from "../src/data-import.js";
 import { createPrismaClient, type AppPrismaClient } from "../src/database.js";
 import { readSampleSeed } from "../src/import-seed.js";
@@ -90,23 +89,7 @@ function actionableClassification(
   );
 }
 
-function portableInventory(document: PortableDocument) {
-  return {
-    projects: document.projects.length,
-    repositories: document.repositories.length,
-    worktrees: document.worktrees.length,
-    actionables: document.actionables.length,
-    statusHistory: document.statusHistory.length,
-    validationRecords: document.validationRecords.length,
-    userSources: document.userSources.length,
-    activities: document.activities.length,
-    hierarchy: document.hierarchy.length,
-    dependencies: document.dependencies.length,
-    relationshipSuggestions: document.relationshipSuggestions.length,
-  };
-}
-
-describe("portable import and export", () => {
+describe("internal seed reconciliation", () => {
   it("routes the generic 32-item sample seed through one idempotent order-independent preview and commit pipeline", async () => {
     const prisma = await freshDatabase();
     const service = new DataImportService(prisma);
@@ -762,151 +745,5 @@ describe("portable import and export", () => {
       waiverReason: "Reviewed and accepted.",
       provenance: "user",
     });
-  }, 30_000);
-
-  it("restores a timestamped public API backup into a fresh database with semantic continuity", async () => {
-    const source = await freshDatabase();
-    const sourceApp = buildApp({ prisma: source });
-    const target = await freshDatabase();
-    const targetApp = buildApp({ prisma: target });
-
-    try {
-      const seedPreviewResponse = await sourceApp.inject({
-        method: "POST",
-        url: "/api/data/import-previews",
-        payload: await seedDocument(),
-      });
-      expect(seedPreviewResponse.statusCode).toBe(200);
-      const seedPreview = seedPreviewResponse.json<ImportPreviewResponse>();
-      const seedAuthorizationResponse = await sourceApp.inject({
-        method: "POST",
-        url: `/api/data/import-previews/${seedPreview.previewToken}/selections`,
-        payload: {
-          contentDigest: seedPreview.contentDigest,
-          conflictResolutions: conflictSelections(seedPreview),
-          acceptedSuggestionIds: [],
-        },
-      });
-      expect(seedAuthorizationResponse.statusCode).toBe(200);
-      const seedAuthorization = seedAuthorizationResponse.json<{
-        commitToken: string;
-        selectionsDigest: string;
-      }>();
-      const seedCommitResponse = await sourceApp.inject({
-        method: "POST",
-        url: `/api/data/import-previews/${seedPreview.previewToken}/commit`,
-        payload: {
-          contentDigest: seedPreview.contentDigest,
-          commitToken: seedAuthorization.commitToken,
-          selectionsDigest: seedAuthorization.selectionsDigest,
-        },
-      });
-      expect(seedCommitResponse.statusCode).toBe(200);
-
-      const backupResponse = await sourceApp.inject({
-        method: "GET",
-        url: "/api/data/export",
-      });
-      expect(backupResponse.statusCode).toBe(200);
-      expect(backupResponse.headers["content-disposition"]).toMatch(
-        /^attachment; filename="actionables-backup-\d{8}-\d{6}Z\.json"$/,
-      );
-      const backup = backupResponse.json<PortableDocument>();
-      expect(Number.isNaN(Date.parse(backup.exportedAt))).toBe(false);
-      expect(portableInventory(backup).actionables).toBe(32);
-
-      const previewResponse = await targetApp.inject({
-        method: "POST",
-        url: "/api/data/import-previews",
-        payload: backup,
-      });
-      expect(previewResponse.statusCode).toBe(200);
-      const preview = previewResponse.json<ImportPreviewResponse>();
-      expect(preview.canCommit).toBe(true);
-      expect(preview.totalsByRecordType.actionable).toMatchObject({
-        creates: 32,
-        conflicts: 0,
-        invalid: 0,
-      });
-
-      const authorizationResponse = await targetApp.inject({
-        method: "POST",
-        url: `/api/data/import-previews/${preview.previewToken}/selections`,
-        payload: {
-          contentDigest: preview.contentDigest,
-          conflictResolutions: conflictSelections(preview),
-          acceptedSuggestionIds: [],
-        },
-      });
-      expect(authorizationResponse.statusCode).toBe(200);
-      const authorization = authorizationResponse.json<{
-        commitToken: string;
-        selectionsDigest: string;
-      }>();
-      expect(authorization.commitToken).toBeTruthy();
-      expect(authorization.selectionsDigest).toHaveLength(64);
-
-      const commitResponse = await targetApp.inject({
-        method: "POST",
-        url: `/api/data/import-previews/${preview.previewToken}/commit`,
-        payload: {
-          contentDigest: preview.contentDigest,
-          commitToken: authorization.commitToken,
-          selectionsDigest: authorization.selectionsDigest,
-        },
-      });
-      expect(commitResponse.statusCode).toBe(200);
-      expect(commitResponse.json()).toMatchObject({
-        summary: { creates: expect.any(Number) },
-      });
-
-      const reexportResponse = await targetApp.inject({
-        method: "GET",
-        url: "/api/data/export",
-      });
-      expect(reexportResponse.statusCode).toBe(200);
-      const reexported = reexportResponse.json<PortableDocument>();
-      expect(portableInventory(reexported)).toEqual(portableInventory(backup));
-      expect(semanticPortableSnapshot(reexported)).toBe(
-        semanticPortableSnapshot(backup),
-      );
-    } finally {
-      await Promise.all([sourceApp.close(), targetApp.close()]);
-    }
-  }, 30_000);
-
-  it("returns structured API errors for malformed and oversized JSON and a timestamped export", async () => {
-    const prisma = await freshDatabase();
-    const app = buildApp({ prisma });
-    const malformed = await app.inject({
-      method: "POST",
-      url: "/api/data/import-previews",
-      headers: { "content-type": "application/json" },
-      payload: "{bad",
-    });
-    expect(malformed.statusCode).toBe(400);
-    expect(malformed.json()).toMatchObject({ code: "MALFORMED_JSON" });
-
-    const oversized = await app.inject({
-      method: "POST",
-      url: "/api/data/import-previews",
-      headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ text: "x".repeat(6 * 1024 * 1024) }),
-    });
-    expect(oversized.statusCode).toBe(413);
-    expect(oversized.json()).toMatchObject({ code: "IMPORT_TOO_LARGE" });
-
-    const exported = await app.inject({
-      method: "GET",
-      url: "/api/data/export",
-    });
-    expect(exported.statusCode).toBe(200);
-    expect(exported.headers["content-disposition"]).toMatch(
-      /^attachment; filename="actionables-backup-\d{8}-\d{6}Z\.json"$/,
-    );
-    expect(exported.headers["x-actionables-sensitive-data"]).toContain(
-      "technical paths",
-    );
-    await app.close();
   }, 30_000);
 });

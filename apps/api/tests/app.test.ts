@@ -143,6 +143,53 @@ describe("Actionables API", () => {
     userSources: [],
   });
 
+  it("does not expose retired import or export routes or mutate stored records", async () => {
+    const before = {
+      actionables: await prisma!.actionable.count(),
+      imports: await prisma!.importRun.count(),
+    };
+    for (const [method, url] of [
+      ["GET", "/api/data/export"],
+      ["POST", "/api/data/import-previews"],
+      ["POST", "/api/data/import-previews/retired/selections"],
+      ["POST", "/api/data/import-previews/retired/commit"],
+    ] as const) {
+      const response = await app!.inject({
+        method,
+        url,
+        ...(method === "POST" ? { payload: {} } : {}),
+      });
+      expect(response.statusCode).toBe(404);
+      expect(response.headers["content-disposition"]).toBeUndefined();
+    }
+    expect({
+      actionables: await prisma!.actionable.count(),
+      imports: await prisma!.importRun.count(),
+    }).toEqual(before);
+  });
+
+  it("rejects malformed and oversized JSON requests before writing records", async () => {
+    const before = await prisma!.actionable.count();
+    const malformed = await app!.inject({
+      method: "POST",
+      url: "/api/actionables",
+      headers: { "content-type": "application/json" },
+      payload: "{bad",
+    });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json()).toMatchObject({ code: "MALFORMED_JSON" });
+
+    const oversized = await app!.inject({
+      method: "POST",
+      url: "/api/actionables",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "x".repeat(6 * 1024 * 1024) }),
+    });
+    expect(oversized.statusCode).toBe(413);
+    expect(oversized.json()).toMatchObject({ code: "REQUEST_TOO_LARGE" });
+    expect(await prisma!.actionable.count()).toBe(before);
+  });
+
   it("reports database health and preserves a supplied correlation id", async () => {
     const response = await app!.inject({
       method: "GET",

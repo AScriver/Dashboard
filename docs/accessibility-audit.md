@@ -2,6 +2,11 @@
 
 Audit date: 2026-07-25
 
+September 7, 2026 update: the Data/import/export screens were removed. References
+to those surfaces below are historical. The current 52-test Edge browser suite
+passed, including the remaining automated accessibility scenarios, keyboard
+navigation, and mobile/reflow checks. See [removal verification](import-export-removal.md).
+
 Platform: Windows 11 Enterprise 25H2, build 26200.8390, 64-bit
 
 Browsers: Playwright Chromium 149.0.7827.55; installed Edge 150.0.4078.83; installed Chrome 150.0.7871.182

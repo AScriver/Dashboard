@@ -2,6 +2,12 @@
 
 Status: **pass — verified 2026-07-25**
 
+September 7, 2026 scope update: the Data page and public JSON import/export
+routes have been removed. Import/export, portable backup, and Data-screen claims
+below describe the original release only; those surfaces are no longer part of
+the product or its browser gate. See [removal verification](import-export-removal.md)
+and [local data](backup-restore.md) for the current state.
+
 This report is the T-007 release decision for the local Windows MVP. It is evidence for the tested environment and declared support boundary, not a tag, published release, installer, or WCAG certification.
 
 ## Release definition and decision

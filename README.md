@@ -177,8 +177,8 @@ Application state is stored in the local SQLite database. The app no longer
 provides a Data page or JSON import/export interface. Existing records and
 source evidence remain available.
 
-- [Backup and restore](docs/backup-restore.md)
-- [Portable data format](docs/portable-data-format.md)
+- [Local data and historical backups](docs/backup-restore.md)
+- [Internal seed reconciliation format](docs/portable-data-format.md)
 
 ## Production-mode local run
 

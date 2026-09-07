@@ -33,11 +33,6 @@ import {
   statusTransitionRequestSchema,
   updateActionableRequestSchema,
   updateHelperAgentSettingsRequestSchema,
-  commitImportRequestSchema,
-  importCommitResponseSchema,
-  importPreviewResponseSchema,
-  prepareImportCommitRequestSchema,
-  prepareImportCommitResponseSchema,
   forceReleaseAgentClaimRequestSchema,
   relationshipAuditResponseSchema,
   triageInboxQueueRequestSchema,
@@ -81,8 +76,6 @@ import {
   setParent,
   waiveDependency,
 } from "./relationships.js";
-import { DataImportService, PortableImportError } from "./data-import.js";
-import { exportPortableDocument } from "./portable-format.js";
 import { registerMcpRoutes } from "./mcp.js";
 import {
   AgentTaskClaimError,
@@ -224,7 +217,6 @@ export function buildApp({
   agentHomeDirectory,
   folderPicker = selectNativeFolder,
 }: BuildAppOptions) {
-  const dataImports = new DataImportService(prisma);
   const agentIntegration = new AgentIntegrationInstaller({
     homeDirectory: agentHomeDirectory,
     runtimeConfig,
@@ -279,11 +271,6 @@ export function buildApp({
           ...(migrations.length ? { errors: { migrations } } : {}),
         },
       );
-    }
-    if (error instanceof PortableImportError) {
-      return problem(request, reply, error.status, error.code, error.message, {
-        errors: error.errors,
-      });
     }
     if (error instanceof DomainValidationError) {
       return problem(request, reply, 422, error.code, error.message, {
@@ -418,7 +405,7 @@ export function buildApp({
         reply,
         400,
         "MALFORMED_JSON",
-        "The uploaded JSON is malformed.",
+        "The request JSON is malformed.",
       );
     }
     if (statusCode === 413) {
@@ -426,8 +413,8 @@ export function buildApp({
         request,
         reply,
         413,
-        "IMPORT_TOO_LARGE",
-        "The import exceeds the 6 MB server limit.",
+        "REQUEST_TOO_LARGE",
+        "The request exceeds the 6 MB server limit.",
       );
     }
 
@@ -563,75 +550,6 @@ export function buildApp({
         "The folder picker could not be opened.",
       );
     }
-  });
-
-  app.post("/api/data/import-previews", async (request) => {
-    return importPreviewResponseSchema.parse(
-      await dataImports.preview(request.body),
-    );
-  });
-
-  app.post<{ Params: { token: string } }>(
-    "/api/data/import-previews/:token/selections",
-    async (request, reply) => {
-      const parsed = prepareImportCommitRequestSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return problem(
-          request,
-          reply,
-          422,
-          "VALIDATION_ERROR",
-          "Check the import selections.",
-          {
-            errors: fieldErrors(parsed.error),
-          },
-        );
-      }
-      return prepareImportCommitResponseSchema.parse(
-        dataImports.prepare(request.params.token, parsed.data),
-      );
-    },
-  );
-
-  app.post<{ Params: { token: string } }>(
-    "/api/data/import-previews/:token/commit",
-    async (request, reply) => {
-      const parsed = commitImportRequestSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return problem(
-          request,
-          reply,
-          422,
-          "VALIDATION_ERROR",
-          "Check the import commit.",
-          {
-            errors: fieldErrors(parsed.error),
-          },
-        );
-      }
-      return importCommitResponseSchema.parse(
-        await dataImports.commit(request.params.token, parsed.data),
-      );
-    },
-  );
-
-  app.get("/api/data/export", async (_request, reply) => {
-    const exportedAt = new Date();
-    const stamp = exportedAt
-      .toISOString()
-      .replace(/[-:]/g, "")
-      .replace(/\.\d{3}Z$/, "Z")
-      .replace("T", "-");
-    reply.header(
-      "content-disposition",
-      `attachment; filename="actionables-backup-${stamp}.json"`,
-    );
-    reply.header("content-type", "application/json; charset=utf-8");
-    reply.header(
-      "x-actionables-sensitive-data",
-      "technical paths and research notes",
-    );
-    return exportPortableDocument(prisma, { exportedAt });
   });
 
   app.get<{ Querystring: Record<string, unknown> }>(
