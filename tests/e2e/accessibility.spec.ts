@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { writeFile } from "node:fs/promises";
 
 test.setTimeout(120_000);
 
@@ -98,30 +97,9 @@ test("@a11y representative dashboard, list, detail, form, lifecycle, validation,
   await expect(archiveButton).toBeFocused();
 });
 
-test("@a11y import preview, success, empty, error, mobile navigation, and reflow states pass axe", async ({
+test("@a11y empty, error, mobile navigation, and reflow states pass axe", async ({
   page,
-  request,
-}, testInfo) => {
-  const exportResponse = await request.get("/api/data/export");
-  expect(exportResponse.ok()).toBe(true);
-  const portable = await exportResponse.json();
-  portable.metadata.sourceName = "Accessibility preview";
-  const importPath = testInfo.outputPath("accessibility-import.json");
-  await writeFile(importPath, `${JSON.stringify(portable, null, 2)}\n`, "utf8");
-
-  await page.goto("/data");
-  await expectNoAxeViolations(page, "data initial");
-  await page.locator('input[type="file"]').setInputFiles(importPath);
-  await expect(page.getByRole("heading", { name: "2. Preview" })).toBeVisible();
-  await expectNoAxeViolations(
-    page,
-    "import preview and conflict/error presentation",
-  );
-  await page.getByRole("button", { name: "Review selections" }).click();
-  await page.getByRole("button", { name: "Commit reviewed import" }).click();
-  await expect(page.getByText("Import committed")).toBeVisible();
-  await expectNoAxeViolations(page, "import success");
-
+}) => {
   await page.goto("/?q=axe-no-results-4d8bc761");
   await expect(page.getByText(/No results match these filters/)).toBeVisible();
   await expectNoAxeViolations(page, "empty and no-results");
@@ -157,10 +135,10 @@ test("@a11y import preview, success, empty, error, mobile navigation, and reflow
   await expectNoAxeViolations(page, "200 percent equivalent reflow");
 });
 
-test("@a11y loading, offline, background refresh, archive error, invalid import, and archived states pass axe", async ({
+test("@a11y loading, offline, background refresh, archive error, and archived states pass axe", async ({
   page,
   request,
-}, testInfo) => {
+}) => {
   let releaseListRequest = () => {};
   const listRequestGate = new Promise<void>((resolve) => {
     releaseListRequest = resolve;
@@ -216,13 +194,6 @@ test("@a11y loading, offline, background refresh, archive error, invalid import,
   await expectNoAxeViolations(page, "archive impact error");
   await archiveDialog.press("Escape");
   await page.unroute("**/api/archive-impact/actionable/*");
-
-  const invalidImportPath = testInfo.outputPath("invalid-import.json");
-  await writeFile(invalidImportPath, "{not valid JSON}\n", "utf8");
-  await page.goto("/data");
-  await page.locator('input[type="file"]').setInputFiles(invalidImportPath);
-  await expect(page.getByRole("alert")).toContainText("valid JSON");
-  await expectNoAxeViolations(page, "invalid import error");
 
   const scopesResponse = await request.get("/api/scopes");
   expect(scopesResponse.ok()).toBe(true);

@@ -105,13 +105,7 @@ test("desktop sidebar collapses to an accessible navigation rail without losing 
   });
   const projectTree = sidebar.locator(".project-tree");
   const selectedWorktree = projectTree.locator(".worktree-row.is-selected");
-  const navigationNames = [
-    "Dashboard",
-    "Actionables",
-    "Done",
-    "Archive",
-    "Data",
-  ];
+  const navigationNames = ["Dashboard", "Actionables", "Done", "Archive"];
   const settings = sidebar
     .locator(".sidebar-status")
     .getByRole("button", { name: "Settings", exact: true });

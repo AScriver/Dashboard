@@ -26,8 +26,6 @@ built-in Codex handoff._
 - Dashboard queues, stale-work alerts, search, and include/exclude filters for
   deciding what should be handed to Codex next.
 - Archive completed scopes and restore them later.
-- Preview and reconcile portable JSON imports before saving, and export the
-  complete local state for backup.
 - Let Codex create and coordinate scoped tasks through an authenticated,
   loopback-only MCP endpoint.
 
@@ -173,11 +171,11 @@ requested and use a read-only Codex sandbox. See
 [Windows setup and local operation](docs/windows-setup.md#optional-codex-instructions-and-workflow-skill)
 for configuration, invocation, and troubleshooting.
 
-## Data and backups
+## Local data
 
-Application state is stored in the local SQLite database. Portable JSON is the
-supported backup and restore format; exports can contain source text, technical
-paths, and research notes, so handle them as sensitive project data.
+Application state is stored in the local SQLite database. The app no longer
+provides a Data page or JSON import/export interface. Existing records and
+source evidence remain available.
 
 - [Backup and restore](docs/backup-restore.md)
 - [Portable data format](docs/portable-data-format.md)

@@ -332,7 +332,7 @@ test("Settings is a single keyboard-accessible shortcut in the sidebar status ar
 
   await sidebar.getByRole("button", { name: "Collapse left sidebar" }).click();
   await expect(settings).toBeVisible();
-  await sidebar.getByRole("button", { name: "Data", exact: true }).click();
+  await sidebar.getByRole("button", { name: "Dashboard", exact: true }).click();
   await settings.press("Space");
   await expect(
     page.getByRole("heading", { name: "Settings", exact: true }),
@@ -352,4 +352,26 @@ test("Settings is a single keyboard-accessible shortcut in the sidebar status ar
   await expect(
     page.getByRole("heading", { name: "Settings", exact: true }),
   ).toBeVisible();
+});
+
+test("legacy Data URLs open Actionables without import or export controls", async ({
+  page,
+}) => {
+  await page.goto("/data?priority=High");
+  await expect(
+    page.getByRole("heading", { name: /^Actionables/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: "Actionable findings" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: /^(Data|Export backup|Review selections|Commit reviewed import)$/,
+    }),
+  ).toHaveCount(0);
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\?priority=High$/);
+  await page.getByRole("button", { name: "Actionables", exact: true }).click();
+  await expect(page).toHaveURL(/\/\?priority=High$/);
 });
