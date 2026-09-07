@@ -33,14 +33,13 @@ built-in Codex handoff._
 
 The sidebar lists repositories with their branches/worktrees underneath. Each
 repository can be expanded or collapsed independently. Project scopes remain
-available through the top-bar selector and repository setup.
-
-Choosing **Actionables** clears the project, repository, and worktree filters
-while preserving other filters; the existing **Done** shortcut still returns to
-active work when you choose **Actionables**.
-
-Repository archive actions are no longer shown in the sidebar; scope archival
-through the API is unchanged.
+available through the top-bar selector and repository setup. Choosing
+**Actionables** clears the project, repository, and worktree filters while
+preserving other filters; the existing **Done** shortcut still returns to active
+work when you choose **Actionables**. **Settings** is at the bottom of the
+sidebar and remains available in its collapsed navigation rail. Repository
+archive actions are no longer shown in the sidebar; scope archival through the
+API is unchanged.
 
 ## Requirements
 

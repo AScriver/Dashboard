@@ -6353,18 +6353,6 @@ export default function App() {
               Data
             </span>
           </button>
-          <button
-            type="button"
-            className={view === "settings" ? "is-selected" : ""}
-            onClick={() => replaceLocation("settings", null, query)}
-          >
-            <Settings aria-hidden="true" />
-            <span
-              className={`primary-navigation-label ${sidebarCollapsed ? "sr-only" : ""}`}
-            >
-              Settings
-            </span>
-          </button>
         </nav>
         <div className="project-tree">
           <div className="tree-label">Repositories</div>
@@ -6482,15 +6470,18 @@ export default function App() {
           </button>
         </div>
         <div className="sidebar-status">
-          <span>
-            <CircleDot aria-hidden="true" />
-            {online ? "Local API" : "Offline"}
-          </span>
-          <span>
-            {listQuery.isFetching && !listQuery.isPending
-              ? "Refreshing…"
-              : "Ready"}
-          </span>
+          <button
+            type="button"
+            className={view === "settings" ? "is-selected" : ""}
+            onClick={() => replaceLocation("settings", null, query)}
+          >
+            <Settings aria-hidden="true" />
+            <span
+              className={`primary-navigation-label ${sidebarCollapsed ? "sr-only" : ""}`}
+            >
+              Settings
+            </span>
+          </button>
         </div>
       </aside>
 

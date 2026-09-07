@@ -178,7 +178,6 @@ test("@a11y loading, offline, background refresh, archive error, invalid import,
 
   await page.context().setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
-  await expect(page.getByText("Offline", { exact: true })).toBeVisible();
   await expect(page.getByText("Local API unreachable")).toBeVisible();
   await expectNoAxeViolations(page, "offline with preserved results");
   await page.context().setOffline(false);

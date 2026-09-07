@@ -295,3 +295,61 @@ test("Actionables clears every scope while preserving unrelated filters and allo
   await expect(firstRow).toBeVisible();
   await expect(secondRow).toBeVisible();
 });
+
+test("Settings is a single keyboard-accessible shortcut in the sidebar status area", async ({
+  page,
+}) => {
+  await page.goto("/?priority=High");
+  const sidebar = page.locator(".sidebar");
+  const footer = sidebar.locator(".sidebar-status");
+  const settings = footer.getByRole("button", {
+    name: "Settings",
+    exact: true,
+  });
+  await expect(
+    sidebar.getByRole("button", { name: "Settings", exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    sidebar
+      .locator(".primary-navigation")
+      .getByRole("button", { name: "Settings", exact: true }),
+  ).toHaveCount(0);
+  await expect(footer).not.toContainText("Local API");
+  await expect(footer).not.toContainText("Ready");
+  await sidebar.getByRole("button", { name: /^All actionables/ }).focus();
+  await page.keyboard.press("Tab");
+  await expect(settings).toBeFocused();
+  await settings.press("Enter");
+  await expect(page).toHaveURL(/\/settings\?priority=High$/);
+  await expect(
+    page.getByRole("heading", { name: "Settings", exact: true }),
+  ).toBeVisible();
+  await expect(settings).toHaveClass(/is-selected/);
+  await page.screenshot({
+    path: "output/playwright/sidebar-settings-desktop.png",
+    fullPage: true,
+  });
+
+  await sidebar.getByRole("button", { name: "Collapse left sidebar" }).click();
+  await expect(settings).toBeVisible();
+  await sidebar.getByRole("button", { name: "Data", exact: true }).click();
+  await settings.press("Space");
+  await expect(
+    page.getByRole("heading", { name: "Settings", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "output/playwright/sidebar-settings-collapsed.png",
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: "Open project navigation" })
+    .click();
+  await settings.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Settings", exact: true }),
+  ).toBeVisible();
+});

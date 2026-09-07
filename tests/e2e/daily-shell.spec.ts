@@ -111,8 +111,13 @@ test("desktop sidebar collapses to an accessible navigation rail without losing 
     "Done",
     "Archive",
     "Data",
-    "Settings",
   ];
+  const settings = sidebar
+    .locator(".sidebar-status")
+    .getByRole("button", { name: "Settings", exact: true });
+  await expect(
+    primaryNavigation.getByRole("button", { name: "Settings", exact: true }),
+  ).toHaveCount(0);
 
   await expect(selectedWorktree).toHaveClass(/is-selected/);
   await expect(selectedWorktree).toContainText(worktree.name);
@@ -130,7 +135,10 @@ test("desktop sidebar collapses to an accessible navigation rail without losing 
   await expect(expand).toBeVisible();
   await expect(expand).toHaveAttribute("aria-expanded", "false");
   await expect(projectTree).toBeHidden();
-  await expect(sidebar.locator(".sidebar-status")).toBeHidden();
+  await expect(settings).toBeVisible();
+  await expect(settings.locator(".primary-navigation-label")).toHaveClass(
+    /sr-only/,
+  );
   await expect(selectedWorktree).toHaveClass(/is-selected/);
 
   const collapsedGeometry = await shell.evaluate((element) => {
@@ -181,6 +189,9 @@ test("desktop sidebar collapses to an accessible navigation rail without losing 
         .locator(".primary-navigation-label"),
     ).not.toHaveClass(/sr-only/);
   }
+  await expect(settings.locator(".primary-navigation-label")).not.toHaveClass(
+    /sr-only/,
+  );
 
   await page.setViewportSize({ width: 900, height: 800 });
   await page.goto("/");

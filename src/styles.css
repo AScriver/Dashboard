@@ -172,9 +172,12 @@ button {
 }
 
 .sidebar-collapsed .product-bar > span,
-.sidebar-collapsed .project-tree,
-.sidebar-collapsed .sidebar-status {
+.sidebar-collapsed .project-tree {
   display: none;
+}
+
+.sidebar-collapsed .sidebar-status {
+  grid-row: 4;
 }
 
 .tree-label {
@@ -388,17 +391,12 @@ button {
 .sidebar-status {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 9px;
   border-top: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 11px;
 }
 
-.sidebar-status span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.sidebar-status button {
+  width: 100%;
 }
 
 .sidebar-status svg {
@@ -4005,7 +4003,8 @@ button {
   border-bottom: 1px solid var(--border-soft);
 }
 
-.primary-navigation button {
+.primary-navigation button,
+.sidebar-status button {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -4020,24 +4019,29 @@ button {
   text-align: left;
 }
 
-.sidebar-collapsed .primary-navigation {
+.sidebar-collapsed .primary-navigation,
+.sidebar-collapsed .sidebar-status {
   padding-right: 7px;
   padding-left: 7px;
 }
 
-.sidebar-collapsed .primary-navigation button {
+.sidebar-collapsed .primary-navigation button,
+.sidebar-collapsed .sidebar-status button {
   justify-content: center;
   gap: 0;
   padding: 0;
 }
 
 .primary-navigation button:hover,
-.primary-navigation button.is-selected {
+.primary-navigation button.is-selected,
+.sidebar-status button:hover,
+.sidebar-status button.is-selected {
   background: var(--surface-hover);
   color: var(--text-strong);
 }
 
-.primary-navigation button.is-selected {
+.primary-navigation button.is-selected,
+.sidebar-status button.is-selected {
   box-shadow: inset 2px 0 var(--accent);
 }
 
@@ -4067,10 +4071,6 @@ button {
 
 .scope-action-row .worktree-row {
   min-width: 0;
-}
-
-.sidebar-status {
-  justify-content: space-between;
 }
 
 .dashboard-panel {
