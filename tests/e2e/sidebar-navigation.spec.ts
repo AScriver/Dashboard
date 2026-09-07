@@ -199,3 +199,99 @@ test("repository archival and restoration remain available outside the sidebar",
   await page.goto(`/?q=${encodeURIComponent(item.title)}`);
   await expect(page.locator(`[data-actionable-id="${item.id}"]`)).toBeVisible();
 });
+
+test("Actionables clears every scope while preserving unrelated filters and allows rescoping", async ({
+  page,
+}) => {
+  const prefix = `Sidebar filters ${Date.now()}`;
+  const first = await createScopedFixture(page.request, `${prefix} first`);
+  const second = await createScopedFixture(page.request, `${prefix} second`);
+  const unrelated = {
+    q: prefix,
+    status: "Inbox",
+    priority: "Low",
+    exclude: "priority",
+    effort: "S",
+    tag: "sidebar-regression",
+    sort: "title",
+  };
+  const scopedQuery = new URLSearchParams({
+    ...unrelated,
+    project: first.scope.projectId,
+    repository: first.scope.repositoryId,
+    worktree: first.scope.worktreeId,
+  });
+  await page.goto(`/?${scopedQuery}`);
+  const firstRow = page.locator(`[data-actionable-id="${first.item.id}"]`);
+  const secondRow = page.locator(`[data-actionable-id="${second.item.id}"]`);
+  await expect(firstRow).toBeVisible();
+  await expect(secondRow).toHaveCount(0);
+  await page.getByRole("button", { name: "Actionables", exact: true }).click();
+  expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual(
+    unrelated,
+  );
+  await expect(firstRow).toBeVisible();
+  await expect(secondRow).toBeVisible();
+  await expect(page.getByLabel("Search actionables")).toHaveValue(prefix);
+  await page.getByRole("button", { name: /Filters/ }).click();
+  await expect(page.getByLabel("Status", { exact: true })).toHaveValue("Inbox");
+  await expect(page.getByLabel("Priority", { exact: true })).toHaveValue("Low");
+  await expect(page.getByLabel("Effort", { exact: true })).toHaveValue("S");
+  await expect(page.getByLabel("Tag", { exact: true })).toHaveValue(
+    "sidebar-regression",
+  );
+  await expect(
+    page
+      .locator(".filter-field")
+      .filter({ has: page.getByText("Priority", { exact: true }) })
+      .getByRole("button", { name: "Exclude" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Filters/ }).click();
+
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: "All projects", exact: true })
+    .click();
+  await page
+    .getByRole("menuitemradio", {
+      name: `${prefix} second project`,
+      exact: true,
+    })
+    .click();
+  await expect(firstRow).toHaveCount(0);
+  await expect(secondRow).toBeVisible();
+  const group = page.locator(".repository-group").filter({
+    has: page.getByRole("button", {
+      name: `${prefix} second repository`,
+      exact: true,
+    }),
+  });
+  await group.locator(".worktree-row").click();
+  expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
+    ...unrelated,
+    project: second.scope.projectId,
+    repository: second.scope.repositoryId,
+    worktree: second.scope.worktreeId,
+  });
+  await expect(secondRow).toBeVisible();
+  await expect(firstRow).toHaveCount(0);
+
+  await page.goto(`/dashboard?${scopedQuery}`);
+  await page.getByRole("button", { name: "Actionables", exact: true }).click();
+  expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual(
+    unrelated,
+  );
+  await expect(firstRow).toBeVisible();
+  await expect(secondRow).toBeVisible();
+
+  scopedQuery.set("status", "Done");
+  await page.goto(`/?${scopedQuery}`);
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByRole("button", { name: "Actionables", exact: true }).click();
+  const { status: _status, ...activeFilters } = unrelated;
+  expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual(
+    activeFilters,
+  );
+  await expect(firstRow).toBeVisible();
+  await expect(secondRow).toBeVisible();
+});

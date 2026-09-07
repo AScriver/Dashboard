@@ -6293,9 +6293,15 @@ export default function App() {
                 : ""
             }
             onClick={() =>
-              query.status === "Done"
-                ? patchQuery({ status: "active" }, "actionables")
-                : replaceLocation("actionables", null, query)
+              patchQuery(
+                {
+                  project: "",
+                  repository: "",
+                  worktree: "",
+                  ...(query.status === "Done" ? { status: "active" } : {}),
+                },
+                "actionables",
+              )
             }
           >
             <List aria-hidden="true" />

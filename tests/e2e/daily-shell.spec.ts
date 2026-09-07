@@ -261,6 +261,7 @@ test("Done navigation separates completed work and preserves other filters", asy
       worktreeId: worktree.id,
       finding: "Done work needs a direct, separate view.",
       description: "Verify the completed-work navigation.",
+      resolution: "Created the completed-work fixture for navigation checks.",
       research: ["The existing exact Done query is sufficient."],
       validation: ["Exercise the Done and Actionables navigation."],
       tags: ["done-navigation-e2e"],
