@@ -2638,7 +2638,6 @@ export type Status = z.infer<typeof statusSchema>;
 export type ActionableReadiness = z.infer<typeof actionableReadinessSchema>;
 export type Effort = z.infer<typeof effortSchema>;
 export type EvidenceState = z.infer<typeof evidenceStateSchema>;
-export type ArchiveState = z.infer<typeof archiveStateSchema>;
 export type SourceFile = z.infer<typeof sourceFileSchema>;
 export type UserSourceReferenceInput = z.infer<
   typeof userSourceReferenceInputSchema
@@ -2648,13 +2647,6 @@ export type ValidationType = z.infer<typeof validationTypeSchema>;
 export type ValidationOutcome = z.infer<typeof validationOutcomeSchema>;
 export type ValidationRecord = z.infer<typeof validationRecordSchema>;
 export type ActivityEvent = z.infer<typeof activityEventSchema>;
-export type RelatedActionable = z.infer<typeof relatedActionableSchema>;
-export type HierarchyRelationship = z.infer<typeof hierarchyRelationshipSchema>;
-export type DependencyState = z.infer<typeof dependencyStateSchema>;
-export type DependencyRelationship = z.infer<
-  typeof dependencyRelationshipSchema
->;
-export type StatusProvenance = z.infer<typeof statusProvenanceSchema>;
 export type Scope = z.infer<typeof scopeSchema>;
 export type ActionableSummary = z.infer<typeof actionableSummarySchema>;
 export type ActionableDetail = z.infer<typeof actionableDetailSchema>;
@@ -2672,7 +2664,6 @@ export type RepositoryFolderPickerResponse = z.infer<
   typeof repositoryFolderPickerResponseSchema
 >;
 export type ActionableQuery = z.infer<typeof actionableQuerySchema>;
-export type ActionableSort = z.infer<typeof actionableSortSchema>;
 export type DashboardResponse = z.infer<typeof dashboardResponseSchema>;
 export type AgentTaskSummary = z.infer<typeof agentTaskSummarySchema>;
 export type ListAgentTasksRequest = z.infer<typeof listAgentTasksRequestSchema>;
@@ -2703,9 +2694,6 @@ export type ReleaseAgentTaskClaimResponse = z.infer<
 >;
 export type ForceReleaseAgentClaimRequest = z.infer<
   typeof forceReleaseAgentClaimRequestSchema
->;
-export type ArchiveMutationRequest = z.infer<
-  typeof archiveMutationRequestSchema
 >;
 export type ArchiveTargetKind = z.infer<typeof archiveTargetKindSchema>;
 export type ArchiveImpactResponse = z.infer<typeof archiveImpactResponseSchema>;
@@ -2757,9 +2745,6 @@ export type AuditActionableRelationshipsRequest = z.infer<
 >;
 export type RelationshipAuditRecommendation = z.infer<
   typeof relationshipAuditRecommendationSchema
->;
-export type RelationshipAuditProposal = z.infer<
-  typeof relationshipAuditProposalSchema
 >;
 export type RelationshipAuditResponse = z.infer<
   typeof relationshipAuditResponseSchema
@@ -2823,17 +2808,9 @@ export type DependencyActionRequest = z.infer<
   typeof dependencyActionRequestSchema
 >;
 export type ProblemDetails = z.infer<typeof problemDetailsSchema>;
-export type ActionableDetailResponse = z.infer<
-  typeof actionableDetailResponseSchema
->;
-export type HealthResponse = z.infer<typeof healthResponseSchema>;
 export type SeedDocument = z.infer<typeof seedDocumentSchema>;
 export type PortableDocument = z.infer<typeof portableDocumentSchema>;
 export type PortableActionable = PortableDocument["actionables"][number];
-export type RelationshipSuggestion = z.infer<
-  typeof relationshipSuggestionSchema
->;
-export type ImportClassification = z.infer<typeof importClassificationSchema>;
 export type ImportPreviewItem = z.infer<typeof importPreviewItemSchema>;
 export type ImportPreviewResponse = z.infer<typeof importPreviewResponseSchema>;
 export type PrepareImportCommitRequest = z.infer<
