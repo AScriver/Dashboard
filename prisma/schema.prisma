@@ -9,6 +9,8 @@ datasource db {
 
 model HelperAgentSettings {
   id                         String   @id
+  codexResearchPrompt        String?
+  codexImplementationPrompt  String?
   agentClaimLeaseMinutes Int @default(30)
   agentClaimExpiryWarningMinutes Int @default(10)
   localCodexTimeoutSeconds   Int?

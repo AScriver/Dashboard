@@ -35,6 +35,10 @@ import {
   actionableExcludeFilterKeys,
   activeActionableExcludeFilterKeys,
   assistantReasoningEfforts,
+  codexPromptTemplateSchema,
+  codexPromptVariables,
+  defaultCodexResearchPrompt,
+  defaultCodexImplementationPrompt,
   defaultInboxTriageBatchSize,
   defaultLocalCodexTimeoutSeconds,
   isActionableExcludeFilterActive,
@@ -43,6 +47,7 @@ import {
   minimumLocalCodexTimeoutSeconds,
   minimumInboxTriageBatchSize,
   noteGroomerModels,
+  renderCodexStartPrompt,
   type CreateActionableRequest,
   type CreateRepositoryResponse,
   type ActionableDetail,
@@ -1656,40 +1661,16 @@ function AgentClaimPanel({
     !selected.isEffectivelyBlocked &&
     !isTerminal &&
     !(selected.status === "Ready" && hasReadyBlockers);
-  const truncationInstructions =
-    "Before treating the bounded detail as complete, inspect `task.truncation.reconciliationGuidance`. If it is present, reconcile every supported implementation-critical field it names with `actionables.get_task_detail`: use the compact task version and claim token at offset 0, then pass `contentHash` with each `nextOffset` until null, concatenate `json` in order, and JSON-parse the complete value. On `VERSION_CONFLICT`, discard partial pages and restart from the current compact detail. Do not move the task forward or edit files until every named supported field has been reconciled; if guidance is absent, continue normally because any reported loss is noncritical to scope and planned validation.";
-  const composedToolInstructions =
-    "After every Actionables MCP call in a composed sequence, inspect `isError`; if it is true, stop before reading success fields or issuing dependent mutations, preserve the structured error, and follow its recovery guidance.";
-  const readinessInstructions =
-    "Before requesting Ready or moving Ready to In progress, inspect `readiness.requiredForReady` and `permittedTransitions` on the latest result. Supply every named missing finding, description, Research, or planned-validation field, and do not make the transition until the list is empty and the target is permitted.";
-  const workItemId = selected.parentId ?? selected.id;
-  const splitInstructions =
-    selected.parentId === undefined
-      ? `If research establishes multiple independently implementable outcomes, keep this top-level task as the coordination record and create the minimum necessary direct task for every implementation slice under it; use #${selected.id} as both \`workItemId\` and \`parentId\` for each created task. Do not narrow the root to an implementation slice. If the task has one outcome, do not split it.`
-      : `If research establishes multiple independently implementable outcomes, narrow this direct task to one non-overlapping slice and create the minimum remaining slices as sibling direct tasks under work item #${selected.parentId}; use #${selected.parentId} as both \`workItemId\` and \`parentId\` for each sibling, and do not create children under #${selected.id}. If the task has one outcome, do not split it.`;
-  const splitRecordingInstructions =
-    "Each implementation task must be a narrow, complete, independently verifiable vertical slice; do not split by technical layer, create adjacent cleanup, or duplicate scope. Record the split rationale, dependency notes, and validation boundary in the current task and every created task, and leave created tasks unclaimed in Inbox. Unless a dedicated relationship tool is available, record dependencies only as task notes and do not claim that dependency relationships were created.";
-  const researchPrompt =
+  const promptSettingsQuery = useQuery({
+    queryKey: ["helper-agent-settings"],
+    queryFn: fetchHelperAgentSettings,
+  });
+  const startPrompt =
     canRecommendPrompt &&
-    (selected.status === "Inbox" || selected.status === "Researching")
-      ? `Use Actionables work item #${workItemId}. Claim task #${selected.id} and ${selected.status === "Inbox" ? "begin" : "resume"} the Researching phase. Treat the task detail returned by the Actionables MCP as the authoritative task record for the description, finding, existing research, sources, file references, relationships, and planned validation. ${truncationInstructions} ${composedToolInstructions} Research this task before implementation, staying within its stated outcome and boundaries. Follow its named files and symbols, use targeted repository searches, inspect the directly relevant implementation path and only the callers, dependencies, conventions, and tests needed to understand it, and run focused read-only commands or reproductions to verify current behavior. Consult authoritative documentation only for technologies or contracts implicated by the task. ${splitInstructions} ${splitRecordingInstructions} Record concrete requirements, current behavior or root cause, relevant file and symbol references, verified assumptions, remaining questions, risks, and a focused validation plan in the Actionable. Do not investigate or propose adjacent cleanup. Keep the task Researching until the evidence is sufficient to implement its stated scope confidently. ${readinessInstructions} Only move it to In progress before editing.`
+    promptSettingsQuery.data &&
+    !promptSettingsQuery.isError
+      ? renderCodexStartPrompt(selected, promptSettingsQuery.data)
       : null;
-  const isCoordinationRoot =
-    selected.parentId === undefined &&
-    selected.relationships.subtasks.length > 0;
-  const implementationInstructions = isCoordinationRoot
-    ? selected.status === "Ready"
-      ? "Confirm this top-level task remains the coordination record; do not implement or duplicate any direct task's scope. Use the direct task statuses in the root detail to confirm every required task is terminal, and hand off with the coordination blocker if any remain nonterminal. Otherwise move the root to In progress before finalizing it"
-      : "Confirm this top-level task remains the coordination record; do not implement or duplicate any direct task's scope. Use the direct task statuses in the root detail to confirm every required task is terminal, and hand off with the coordination blocker if any remain nonterminal. Otherwise finalize the root"
-    : selected.status === "Ready"
-      ? "Confirm the scope, then move the task to In progress before editing. Implement the stated outcome"
-      : "Confirm the scope, continue implementing the stated outcome";
-  const implementationPrompt =
-    canRecommendPrompt &&
-    (selected.status === "Ready" || selected.status === "In progress")
-      ? `Use Actionables work item #${workItemId}. Claim task #${selected.id} and ${selected.status === "Ready" ? "continue from Ready" : "resume implementation from In progress"}. Use the task detail returned by the Actionables MCP as the authoritative source for the recorded finding, existing research, sources, file references, relationships, and planned validation. ${truncationInstructions} ${composedToolInstructions} ${selected.status === "Ready" ? `${readinessInstructions} ` : ""}${implementationInstructions}, preserve existing user modifications, run the planned validation, populate Resolution with the completed changes and important implementation decisions, record qualifying validation evidence, and only then move #${selected.id} to Done; otherwise hand off with the blocker. If implementation uncovers a need for more investigation, return In progress directly to Researching with a meaningful reason.`
-      : null;
-  const startPrompt = researchPrompt ?? implementationPrompt;
   const preparedChatUrl = startPrompt
     ? buildCodexNewChatUrl(startPrompt, selected.workspacePath)
     : null;
@@ -1790,6 +1771,26 @@ function AgentClaimPanel({
       )}
       {unavailableGuidance && (
         <p className="agent-start-guidance">{unavailableGuidance}</p>
+      )}
+      {canRecommendPrompt && promptSettingsQuery.isPending && (
+        <p className="agent-start-guidance" role="status">
+          Loading Codex prompt settings…
+        </p>
+      )}
+      {canRecommendPrompt && promptSettingsQuery.isError && (
+        <div className="inline-error" role="alert">
+          <p>
+            Could not load Codex prompt settings. Retry before starting this
+            task.
+          </p>
+          <button
+            type="button"
+            className="toolbar-button"
+            onClick={() => void promptSettingsQuery.refetch()}
+          >
+            Retry prompt settings
+          </button>
+        </div>
       )}
       {claim && (
         <button
@@ -3949,6 +3950,9 @@ function SettingsPanel() {
   const [agentClaimExpiryWarningMinutes, setAgentClaimExpiryWarningMinutes] =
     useState("10");
   const [localCodexTimeoutSeconds, setLocalCodexTimeoutSeconds] = useState("");
+  const [codexResearchPrompt, setCodexResearchPrompt] = useState("");
+  const [codexImplementationPrompt, setCodexImplementationPrompt] =
+    useState("");
   const [inboxTriagerBatchSize, setInboxTriagerBatchSize] = useState(
     String(defaultInboxTriageBatchSize),
   );
@@ -3980,6 +3984,8 @@ function SettingsPanel() {
   const [errors, setErrors] = useState<Record<string, string[]>>({});
 
   const loadDraft = (settings: HelperAgentSettings) => {
+    setCodexResearchPrompt(settings.codexResearchPrompt);
+    setCodexImplementationPrompt(settings.codexImplementationPrompt);
     setAgentClaimLeaseMinutes(String(settings.agentClaimLeaseMinutes));
     setAgentClaimExpiryWarningMinutes(
       String(settings.agentClaimExpiryWarningMinutes),
@@ -4012,8 +4018,11 @@ function SettingsPanel() {
 
   const dirty = Boolean(
     settingsQuery.data &&
-    (agentClaimLeaseMinutes !==
-      String(settingsQuery.data.agentClaimLeaseMinutes) ||
+    (codexResearchPrompt !== settingsQuery.data.codexResearchPrompt ||
+      codexImplementationPrompt !==
+        settingsQuery.data.codexImplementationPrompt ||
+      agentClaimLeaseMinutes !==
+        String(settingsQuery.data.agentClaimLeaseMinutes) ||
       agentClaimExpiryWarningMinutes !==
         String(settingsQuery.data.agentClaimExpiryWarningMinutes) ||
       localCodexTimeoutSeconds !==
@@ -4062,6 +4071,16 @@ function SettingsPanel() {
       localCodexTimeoutSeconds === "" ? null : Number(localCodexTimeoutSeconds);
     const triageBatchSize = Number(inboxTriagerBatchSize);
     const validationErrors: Record<string, string[]> = {};
+    for (const [field, value] of Object.entries({
+      codexResearchPrompt,
+      codexImplementationPrompt,
+    })) {
+      const parsed = codexPromptTemplateSchema.safeParse(value);
+      if (!parsed.success)
+        validationErrors[field] = parsed.error.issues.map(
+          (issue) => issue.message,
+        );
+    }
     if (
       !Number.isInteger(leaseMinutes) ||
       leaseMinutes < 5 ||
@@ -4109,11 +4128,14 @@ function SettingsPanel() {
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       setError(
-        validationErrors.localCodexTimeoutSeconds
-          ? "Check the Local Codex runtime settings."
-          : validationErrors.inboxTriagerBatchSize
-            ? "Check the Inbox triage settings."
-            : "Check the agent coordination settings.",
+        validationErrors.codexResearchPrompt ||
+          validationErrors.codexImplementationPrompt
+          ? "Check the Codex start prompt templates."
+          : validationErrors.localCodexTimeoutSeconds
+            ? "Check the Local Codex runtime settings."
+            : validationErrors.inboxTriagerBatchSize
+              ? "Check the Inbox triage settings."
+              : "Check the agent coordination settings.",
       );
       setNotice("");
       return;
@@ -4125,6 +4147,8 @@ function SettingsPanel() {
     try {
       const saved = await updateHelperAgentSettings({
         version: settingsQuery.data.version,
+        codexResearchPrompt,
+        codexImplementationPrompt,
         agentClaimLeaseMinutes: leaseMinutes,
         agentClaimExpiryWarningMinutes: warningMinutes,
         localCodexTimeoutSeconds: timeoutSeconds,
@@ -4218,6 +4242,83 @@ function SettingsPanel() {
         noValidate
         onSubmit={(event) => void save(event)}
       >
+        <section aria-labelledby="codex-start-prompts-title">
+          <h2 id="codex-start-prompts-title">Codex start prompts</h2>
+          <p>
+            Customize the text used by Open in Codex and Copy prompt. Active or
+            expired claims keep their existing task link instead of offering a
+            new start.
+          </p>
+          <p id="codex-prompt-variables-help">
+            Use the literal variables below. Both ID variables are required.
+            Unknown or malformed double-brace variables cannot be saved;
+            expressions are not supported.
+          </p>
+          <dl>
+            {Object.entries(codexPromptVariables).map(([name, description]) => (
+              <div key={name}>
+                <dt>
+                  <code>{`{{${name}}}`}</code>
+                </dt>
+                <dd>{description}</dd>
+              </div>
+            ))}
+          </dl>
+          {(
+            [
+              {
+                field: "codexResearchPrompt",
+                label: "Research prompt template",
+                value: codexResearchPrompt,
+                setValue: setCodexResearchPrompt,
+                defaultValue: defaultCodexResearchPrompt,
+              },
+              {
+                field: "codexImplementationPrompt",
+                label: "Implementation prompt template",
+                value: codexImplementationPrompt,
+                setValue: setCodexImplementationPrompt,
+                defaultValue: defaultCodexImplementationPrompt,
+              },
+            ] as const
+          ).map(({ field, label, value, setValue, defaultValue }) => (
+            <div className="form-field" key={field}>
+              <label htmlFor={field}>{label}</label>
+              <textarea
+                id={field}
+                value={value}
+                rows={8}
+                maxLength={20_000}
+                required
+                disabled={saving}
+                aria-invalid={Boolean(errors[field])}
+                aria-describedby={`codex-prompt-variables-help${errors[field] ? ` ${field}-error` : ""}`}
+                onChange={(event) => {
+                  setValue(event.target.value);
+                  clearFieldError(field);
+                }}
+              />
+              {fieldError(errors, field)}
+              <button
+                type="button"
+                className="toolbar-button"
+                disabled={saving || value === defaultValue}
+                onClick={() => {
+                  setValue(defaultValue);
+                  clearFieldError(field);
+                }}
+                aria-label={`Reset ${label.toLowerCase()} to default`}
+              >
+                <RotateCcw aria-hidden="true" />
+                Reset to default
+              </button>
+            </div>
+          ))}
+          <small>
+            Reset changes only that template. Choose Save settings to persist
+            your edits.
+          </small>
+        </section>
         <section aria-labelledby="agent-coordination-title">
           <div>
             <h2 id="agent-coordination-title">Agent coordination</h2>

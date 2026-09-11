@@ -1,4 +1,6 @@
 import {
+  defaultCodexResearchPrompt,
+  defaultCodexImplementationPrompt,
   defaultLocalCodexTimeoutSeconds,
   helperAgentSettingsSchema,
   type HelperAgentSettings,
@@ -17,6 +19,8 @@ type SettingsClient = AppPrismaClient | Prisma.TransactionClient;
 
 function toContract(
   settings: {
+    codexResearchPrompt: string | null;
+    codexImplementationPrompt: string | null;
     agentClaimLeaseMinutes: number;
     agentClaimExpiryWarningMinutes: number;
     localCodexTimeoutSeconds: number | null;
@@ -39,6 +43,10 @@ function toContract(
   defaultModel: string,
 ): HelperAgentSettings {
   return helperAgentSettingsSchema.parse({
+    codexResearchPrompt:
+      settings.codexResearchPrompt ?? defaultCodexResearchPrompt,
+    codexImplementationPrompt:
+      settings.codexImplementationPrompt ?? defaultCodexImplementationPrompt,
     agentClaimLeaseMinutes: settings.agentClaimLeaseMinutes,
     agentClaimExpiryWarningMinutes: settings.agentClaimExpiryWarningMinutes,
     localCodexTimeoutSeconds: settings.localCodexTimeoutSeconds,
@@ -111,6 +119,14 @@ export async function updateHelperAgentSettings(
   const updated = await prisma.helperAgentSettings.updateMany({
     where: { id: settingsId, version: input.version },
     data: {
+      codexResearchPrompt:
+        input.codexResearchPrompt === defaultCodexResearchPrompt
+          ? null
+          : input.codexResearchPrompt,
+      codexImplementationPrompt:
+        input.codexImplementationPrompt === defaultCodexImplementationPrompt
+          ? null
+          : input.codexImplementationPrompt,
       agentClaimLeaseMinutes: input.agentClaimLeaseMinutes,
       agentClaimExpiryWarningMinutes: input.agentClaimExpiryWarningMinutes,
       localCodexTimeoutSeconds: input.localCodexTimeoutSeconds,

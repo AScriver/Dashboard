@@ -11,6 +11,12 @@ The repository pins pnpm through `package.json` and the intended Node release li
 
 No `.env` file is required. The default database is `file:./data/actionables.db`; set `DATABASE_URL` only when an isolated database is intentional.
 
+The configurable Codex start prompts add two optional settings columns. When
+upgrading an existing installation, run `pnpm run db:migrate` before starting
+the updated build. Existing settings retain their values, and unset templates
+use the application defaults. Configure or reset each template under
+**Settings → Codex start prompts**; see the [template variables](../README.md#hand-work-to-codex).
+
 The agent MCP endpoint is disabled unless `ACTIONABLES_MCP_TOKEN` is set. See [Agent task MCP endpoint](mcp-agent-tasks.md) for the local token and Codex configuration.
 
 ## Optional Codex instructions and workflow skill

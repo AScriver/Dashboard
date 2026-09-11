@@ -457,6 +457,9 @@ export function buildApp({
     const parsed = updateHelperAgentSettingsRequestSchema.safeParse(
       request.body && typeof request.body === "object"
         ? {
+            codexResearchPrompt: currentSettings.codexResearchPrompt,
+            codexImplementationPrompt:
+              currentSettings.codexImplementationPrompt,
             inboxTriagerBatchSize: currentSettings.inboxTriagerBatchSize,
             inboxTriagerEnabled: currentSettings.inboxTriagerEnabled,
             inboxTriagerModel: currentSettings.inboxTriagerModel,

@@ -4,7 +4,11 @@ import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { resolveApiRuntimeConfig } from "@actionables/contracts";
+import {
+  defaultCodexResearchPrompt,
+  defaultCodexImplementationPrompt,
+  resolveApiRuntimeConfig,
+} from "@actionables/contracts";
 import { buildApp } from "../src/app.js";
 import { claimAgentTask, renewAgentTaskClaim } from "../src/agent-tasks.js";
 import {
@@ -670,6 +674,131 @@ describe("Actionables API", () => {
         ),
       });
       expect(restored.statusCode).toBe(200);
+    }
+  });
+
+  it("persists, validates and independently resets Codex start templates", async () => {
+    const read = async () =>
+      (
+        await app!.inject({ method: "GET", url: "/api/settings/helper-agents" })
+      ).json();
+    const initial = await read();
+    expect(initial.codexResearchPrompt).toBe(defaultCodexResearchPrompt);
+    expect(initial.codexImplementationPrompt).toBe(
+      defaultCodexImplementationPrompt,
+    );
+    const payload = (
+      settings: typeof initial,
+      changes: Record<string, unknown> = {},
+    ) => {
+      const value = { ...settings, ...changes };
+      for (const field of [
+        "updatedAt",
+        "localCodexEffectiveTimeoutSeconds",
+        "inboxTriagerEffectiveModel",
+        "noteGroomerEffectiveModel",
+        "relationshipAuditorEffectiveModel",
+      ])
+        delete value[field];
+      return value;
+    };
+    const save = (body: ReturnType<typeof payload>) =>
+      app!.inject({
+        method: "PATCH",
+        url: "/api/settings/helper-agents",
+        payload: body,
+      });
+    let current = initial;
+    try {
+      let response = await save(
+        payload(current, {
+          codexResearchPrompt:
+            "Research #{{taskId}} in #{{workItemId}}: {{taskTitle}}",
+        }),
+      );
+      expect(response.statusCode).toBe(200);
+      current = response.json();
+      expect(current.codexImplementationPrompt).toBe(
+        initial.codexImplementationPrompt,
+      );
+      response = await save(
+        payload(current, {
+          codexImplementationPrompt:
+            "Implement #{{taskId}} in #{{workItemId}}. {{implementationInstructions}}",
+        }),
+      );
+      expect(response.statusCode).toBe(200);
+      current = response.json();
+      expect(await read()).toEqual(current);
+
+      const oldClient = payload(current);
+      delete oldClient.codexResearchPrompt;
+      delete oldClient.codexImplementationPrompt;
+      response = await save(oldClient);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        codexResearchPrompt: current.codexResearchPrompt,
+        codexImplementationPrompt: current.codexImplementationPrompt,
+      });
+      current = response.json();
+      const stale = await save(
+        payload(initial, { codexResearchPrompt: defaultCodexResearchPrompt }),
+      );
+      expect(stale.statusCode).toBe(409);
+
+      for (const field of [
+        "codexResearchPrompt",
+        "codexImplementationPrompt",
+      ]) {
+        for (const value of [
+          "{{workItemId}} {{taskId}} {{unknown}}",
+          "{{workItemId}} {{taskId}} {{broken",
+          "{{taskId}}",
+          "",
+        ]) {
+          const invalid = await save(payload(current, { [field]: value }));
+          expect(invalid.statusCode).toBe(422);
+          expect(invalid.json().errors[field]).toEqual(expect.any(Array));
+          expect(await read()).toEqual(current);
+        }
+      }
+      response = await save(
+        payload(current, { codexResearchPrompt: defaultCodexResearchPrompt }),
+      );
+      expect(response.statusCode).toBe(200);
+      expect(response.json().codexImplementationPrompt).toBe(
+        current.codexImplementationPrompt,
+      );
+      current = response.json();
+      expect(
+        (
+          await prisma!.helperAgentSettings.findUniqueOrThrow({
+            where: { id: "helper-agents" },
+          })
+        ).codexResearchPrompt,
+      ).toBeNull();
+      response = await save(
+        payload(current, {
+          codexImplementationPrompt: defaultCodexImplementationPrompt,
+        }),
+      );
+      expect(response.statusCode).toBe(200);
+      current = response.json();
+      expect(
+        (
+          await prisma!.helperAgentSettings.findUniqueOrThrow({
+            where: { id: "helper-agents" },
+          })
+        ).codexImplementationPrompt,
+      ).toBeNull();
+    } finally {
+      const response = await save(
+        payload(await read(), {
+          codexResearchPrompt: initial.codexResearchPrompt,
+          codexImplementationPrompt: initial.codexImplementationPrompt,
+        }),
+      );
+      expect(response.statusCode).toBe(200);
     }
   });
 

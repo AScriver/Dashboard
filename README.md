@@ -154,6 +154,31 @@ confirm the recorded scope and move to `In progress` before editing. Claims
 prevent two Codex tasks from silently working the same item, while leases and
 handoffs make interrupted work visible.
 
+Customize these prompts under **Settings → Codex start prompts**. Research and
+implementation templates are saved independently of the three local helper
+prompts. Each **Reset to default** button resets only its template; choose
+**Save settings** to persist the change. Existing installations use the current
+application defaults until a custom template is saved.
+
+Templates accept the following literal, case-sensitive variables. Include both
+ID variables to identify the correct work. Unknown names, malformed double
+braces and missing IDs are rejected. Expressions are not evaluated, and inserted
+titles are never interpreted as template syntax.
+
+| Variable | Value |
+| --- | --- |
+| `{{workItemId}}` | Governing top-level Actionable ID (required) |
+| `{{taskId}}` | Selected Actionable ID (required) |
+| `{{taskTitle}}` | Selected title as literal text |
+| `{{phaseAction}}` | Begin/resume research or continue/resume implementation |
+| `{{splitInstructions}}` | Root or direct-task research splitting guidance |
+| `{{implementationInstructions}}` | Ready preflight and implementation or coordination-root finalization guidance |
+
+The defaults retain the existing lifecycle, scope, splitting, validation and
+handoff instructions. Custom templates affect both **Open in Codex** and
+**Copy prompt** without changing workspace selection or claim eligibility.
+Start actions wait for valid saved settings; a loading failure offers a retry.
+
 The dashboard derives its queues and alerts from lifecycle, validation,
 hierarchy, dependency, and claim state, so stalled or blocked work remains
 visible.

@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  codexPromptTemplateSchema,
+  defaultCodexResearchPrompt,
+  defaultCodexImplementationPrompt,
+} from "./codex-prompts.js";
+
+export * from "./codex-prompts.js";
 
 export const defaultWebPort = 4173;
 export const defaultApiPort = 4174;
@@ -970,6 +977,12 @@ export const assistantReasoningEffortSchema = z.enum(assistantReasoningEfforts);
 
 const helperAgentSettingsBaseSchema = z
   .object({
+    codexResearchPrompt: codexPromptTemplateSchema.default(
+      defaultCodexResearchPrompt,
+    ),
+    codexImplementationPrompt: codexPromptTemplateSchema.default(
+      defaultCodexImplementationPrompt,
+    ),
     agentClaimLeaseMinutes: agentTaskLeaseMinutesSchema,
     agentClaimExpiryWarningMinutes: agentClaimExpiryWarningMinutesSchema,
     localCodexTimeoutSeconds: localCodexTimeoutSecondsSchema.nullable(),
