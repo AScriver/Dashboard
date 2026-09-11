@@ -58,6 +58,14 @@ Under **each** Node runtime, the final `pnpm run verify:release` passed as one u
 - Direct `better-sqlite3` load/query: pass.
 - Living-plan validation: pass.
 
+September 11, 2026 Markdown maintenance: rendering now lives directly in
+`src/Markdown.tsx`, with no separate lazy chunk or formatted-text loading state.
+The production build produces one JavaScript bundle at 629.12 kB / 177.84 kB
+gzip, compared with 476.16 kB / 132.49 kB gzip plus a 154.00 kB / 45.88 kB gzip
+Markdown chunk immediately before this change. This moves Markdown into the
+initial download and triggers Vite's existing 500 kB chunk-size warning; the
+build succeeds and the warning threshold is unchanged.
+
 The E2E web server exercised the documented development setup and browser access during both complete gates. Production-mode proof ran the documented build, migration, seed, and `node scripts/start-production.mjs` sequence: the UI at port 4173 proxied `/api/health` to port 4174 and returned HTTP 200 with database health and a correlation ID. A 2026-09-01 maintenance update made `status: ok`, `database: ok`, and `schema: current` the readiness contract. `Ctrl+C` closed both listeners; a second start returned health 200 again. The desktop PTY reports Ctrl+C as exit code 1 even for a control process that handles SIGINT and explicitly exits 0, so shutdown success was asserted by both ports closing and the successful restart.
 
 Representative import/export and keyboard workflows also passed using the installed `msedge` and `chrome` Playwright channels.
