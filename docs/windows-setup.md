@@ -143,6 +143,9 @@ value is preserved while Actionables safely resolves the other port.
 
 Stop with `Ctrl+C`. A repeat `pnpm run dev` is the supported restart.
 
+The launcher supervises the API watcher and Vite directly. If either process
+exits unexpectedly, it stops the other and returns a failure code.
+
 ### Scheduled development operation
 
 When the optional `Actionables Dashboard` Windows Scheduled Task is registered,

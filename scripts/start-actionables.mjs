@@ -6,17 +6,16 @@ function childSpecs(mode) {
   if (mode === "development") {
     return [
       {
-        label: "Development services",
+        label: "API",
         args: [
-          "node_modules/concurrently/dist/bin/index.js",
-          "--kill-others-on-fail",
-          "-n",
-          "api,web",
-          "-c",
-          "cyan,blue",
-          "tsx watch apps/api/src/server.ts",
-          "vite",
+          "node_modules/tsx/dist/cli.mjs",
+          "watch",
+          "apps/api/src/server.ts",
         ],
+      },
+      {
+        label: "Web",
+        args: ["node_modules/vite/bin/vite.js"],
       },
     ];
   }

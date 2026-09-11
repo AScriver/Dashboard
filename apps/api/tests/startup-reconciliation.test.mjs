@@ -106,7 +106,7 @@ it.each(["development", "production"])(
         },
       });
 
-      expect(childEnvironments).toHaveLength(mode === "development" ? 1 : 2);
+      expect(childEnvironments).toHaveLength(2);
       for (const childEnvironment of childEnvironments) {
         expect(childEnvironment.ACTIONABLES_PREVIOUS_API_PORT).toBe(
           String(savedApiPort),

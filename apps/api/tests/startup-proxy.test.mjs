@@ -186,7 +186,7 @@ describe.sequential("startup launcher proxy integration", () => {
         webPort: running.runtimeConfig.webPort,
         apiPort: running.runtimeConfig.apiPort,
       });
-      expect(spawned).toHaveLength(mode === "development" ? 1 : 2);
+      expect(spawned).toHaveLength(2);
       for (const child of spawned) {
         expect(child.environment.WEB_PORT).toBe(
           String(running.runtimeConfig.webPort),
