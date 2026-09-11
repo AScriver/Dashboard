@@ -2096,6 +2096,243 @@ describe("Actionables API", () => {
     });
   });
 
+  it("removes and reassigns a populated repository atomically without losing its work", async () => {
+    const created = (
+      await app!.inject({
+        method: "POST",
+        url: "/api/repositories",
+        payload: {
+          projectMode: "existing",
+          projectId: scope.projectId,
+          name: "Movable repository",
+          localPath: "C:\\repos\\Movable",
+        },
+      })
+    ).json();
+    const repositoryId = created.repositoryId;
+    const worktreeId = created.worktreeId;
+    const root = (
+      await app!.inject({
+        method: "POST",
+        url: "/api/actionables",
+        payload: {
+          ...createBody("Preserved repository work"),
+          repositoryId,
+          worktreeId,
+        },
+      })
+    ).json().item;
+    const parent = (
+      await app!.inject({
+        method: "POST",
+        url: `/api/actionables/${root.id}/subtasks`,
+        payload: { version: root.version, title: "Preserved child" },
+      })
+    ).json().item;
+    const childId = parent.relationships.subtasks[0].child.id;
+    const child = await prisma!.actionable.update({
+      where: { sourceOrdinal: childId },
+      data: { archivedAt: new Date() },
+    });
+    const before = await prisma!.actionable.findMany({
+      where: { repositoryId },
+      orderBy: { id: "asc" },
+      include: {
+        statusHistory: true,
+        hierarchyAsParent: true,
+        hierarchyAsChild: true,
+      },
+    });
+    const move = (version: number, projectId: string | null) =>
+      app!.inject({
+        method: "PATCH",
+        url: `/api/repositories/${repositoryId}/project`,
+        payload: { version, projectId },
+      });
+    const projectsBefore = await prisma!.project.count();
+    await prisma!.agentTaskClaim.create({
+      data: {
+        actionableId: child.id,
+        agentId: "assignment-test",
+        claimTokenHash: randomUUID(),
+        leaseExpiresAt: new Date(0),
+      },
+    });
+    expect((await move(1, null)).json().code).toBe("REPOSITORY_CLAIMED");
+    expect(await prisma!.project.count()).toBe(projectsBefore);
+    await prisma!.agentTaskClaim.update({
+      where: { actionableId: child.id },
+      data: { leaseExpiresAt: new Date(Date.now() + 60_000) },
+    });
+    expect((await move(1, null)).json().code).toBe("REPOSITORY_CLAIMED");
+    await prisma!.agentTaskClaim.delete({ where: { actionableId: child.id } });
+
+    const removed = await move(1, null);
+    expect(removed.statusCode).toBe(200);
+    const unassigned = removed
+      .json()
+      .projects.find(
+        (project: { isUnassigned: boolean }) => project.isUnassigned,
+      );
+    expect(unassigned.name).toBe("No project");
+    expect(unassigned.repositories).toEqual([
+      expect.objectContaining({
+        id: repositoryId,
+        version: 2,
+        worktrees: [expect.objectContaining({ id: worktreeId })],
+      }),
+    ]);
+    expect(
+      await prisma!.repository.findUniqueOrThrow({
+        where: { id: repositoryId },
+      }),
+    ).toMatchObject({
+      projectId: unassigned.id,
+      localPath: "C:\\repos\\Movable",
+    });
+    expect(
+      await prisma!.worktree.findUniqueOrThrow({ where: { id: worktreeId } }),
+    ).toMatchObject({
+      projectId: unassigned.id,
+      localPath: "C:\\repos\\Movable",
+      version: 2,
+    });
+    const after = await prisma!.actionable.findMany({
+      where: { repositoryId },
+      orderBy: { id: "asc" },
+      include: {
+        statusHistory: true,
+        hierarchyAsParent: true,
+        hierarchyAsChild: true,
+      },
+    });
+    for (const [index, row] of after.entries()) {
+      expect(row).toEqual({
+        ...before[index],
+        projectId: unassigned.id,
+        version: before[index]!.version + 1,
+        updatedAt: expect.any(Date),
+        updatedLabel: "just now",
+      });
+      expect(
+        await prisma!.activityEvent.findFirst({
+          where: { actionableId: row.id, type: "scope-changed" },
+        }),
+      ).toBeTruthy();
+    }
+    const movedDetail = await app!.inject({
+      method: "GET",
+      url: `/api/actionables/${root.id}`,
+    });
+    expect(movedDetail.statusCode).toBe(200);
+    expect(
+      movedDetail
+        .json()
+        .item.activity.some(
+          (event: { type: string }) => event.type === "scope-changed",
+        ),
+    ).toBe(true);
+    const newWork = await app!.inject({
+      method: "POST",
+      url: "/api/actionables",
+      payload: {
+        ...createBody("Work without a project"),
+        projectId: unassigned.id,
+        repositoryId,
+        worktreeId,
+      },
+    });
+    expect(newWork.statusCode).toBe(201);
+    expect((await move(1, scope.projectId)).statusCode).toBe(409);
+    expect((await move(2, "missing-project")).json().code).toBe(
+      "INVALID_PROJECT",
+    );
+    const unavailable = await prisma!.project.create({
+      data: {
+        externalKey: randomUUID(),
+        name: "Unavailable assignment target",
+        archivedAt: new Date(),
+      },
+    });
+    expect((await move(2, unavailable.id)).json().code).toBe("INVALID_PROJECT");
+    const duplicate = await app!.inject({
+      method: "POST",
+      url: "/api/repositories",
+      payload: {
+        projectMode: "new",
+        projectName: "Assignment collision",
+        name: "movable repository",
+        localPath: "C:\\repos\\AssignmentCollision",
+      },
+    });
+    expect((await move(2, duplicate.json().projectId)).json().code).toBe(
+      "DUPLICATE_REPOSITORY",
+    );
+    expect(
+      (
+        await prisma!.repository.findUniqueOrThrow({
+          where: { id: repositoryId },
+        })
+      ).version,
+    ).toBe(2);
+    const restored = await move(2, scope.projectId);
+    expect(restored.statusCode).toBe(200);
+    expect(
+      await prisma!.actionable.count({
+        where: { repositoryId, projectId: scope.projectId },
+      }),
+    ).toBe(3);
+    expect(
+      await prisma!.actionable.count({
+        where: { repositoryId, projectId: unassigned.id },
+      }),
+    ).toBe(0);
+    const filtered = (
+      await app!.inject({
+        method: "GET",
+        url: `/api/actionables?project=${scope.projectId}&repository=${repositoryId}&status=all&archived=all`,
+      })
+    ).json();
+    expect(filtered.items.map((item: { id: number }) => item.id)).toEqual(
+      expect.arrayContaining([root.id, childId, newWork.json().item.id]),
+    );
+    await prisma!.repository.update({
+      where: { id: repositoryId },
+      data: { archivedAt: new Date() },
+    });
+    expect((await move(3, null)).json().code).toBe("ARCHIVED_SCOPE");
+    await prisma!.repository.update({
+      where: { id: repositoryId },
+      data: { archivedAt: null },
+    });
+    expect((await move(3, scope.projectId)).statusCode).toBe(200);
+    expect(
+      (
+        await prisma!.repository.findUniqueOrThrow({
+          where: { id: repositoryId },
+        })
+      ).version,
+    ).toBe(3);
+    expect(
+      (
+        await app!.inject({
+          method: "PATCH",
+          url: "/api/repositories/missing/project",
+          payload: { version: 1, projectId: null },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app!.inject({
+          method: "PATCH",
+          url: `/api/repositories/${repositoryId}/project`,
+          payload: { version: 3 },
+        })
+      ).statusCode,
+    ).toBe(422);
+  });
+
   it("returns folder picker selection, cancellation, and failure without mutating scopes", async () => {
     const before = await Promise.all([
       prisma!.project.count(),

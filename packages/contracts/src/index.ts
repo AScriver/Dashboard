@@ -210,6 +210,7 @@ export const activityTypeSchema = z.enum([
   "restored",
   "scope-archived",
   "scope-restored",
+  "scope-changed",
   "agent-claimed",
   "agent-released",
   "agent-claim-expired",
@@ -437,6 +438,7 @@ export const scopeOptionsResponseSchema = z.object({
     z.object({
       id: z.string().min(1),
       name: z.string().min(1),
+      isUnassigned: z.boolean().default(false),
       version: z.number().int().positive(),
       archivedAt: z.string().datetime().nullable(),
       archiveState: archiveStateSchema,
@@ -499,6 +501,14 @@ export const createRepositoryResponseSchema = z.object({
   worktreeId: z.string().min(1),
   scopes: scopeOptionsResponseSchema,
 });
+
+/** Change a repository's project; null removes its project assignment. */
+export const updateRepositoryProjectRequestSchema = z
+  .object({
+    version: z.number().int().positive(),
+    projectId: z.string().min(1).nullable(),
+  })
+  .strict();
 
 export const repositoryFolderPickerResponseSchema = z
   .object({
@@ -2672,6 +2682,9 @@ export type CreateRepositoryRequest = z.infer<
 >;
 export type CreateRepositoryResponse = z.infer<
   typeof createRepositoryResponseSchema
+>;
+export type UpdateRepositoryProjectRequest = z.infer<
+  typeof updateRepositoryProjectRequestSchema
 >;
 export type RepositoryFolderPickerResponse = z.infer<
   typeof repositoryFolderPickerResponseSchema

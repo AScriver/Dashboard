@@ -1,6 +1,22 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const node = JSON.stringify(process.execPath);
+const reuseExistingServer =
+  process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "1";
+// Reuse must never silently attach mutating tests to the installed app.
+if (
+  reuseExistingServer &&
+  (!process.env.WEB_PORT ||
+    !process.env.API_PORT ||
+    process.env.WEB_PORT === "4173" ||
+    process.env.API_PORT === "4174" ||
+    !process.env.DATABASE_URL ||
+    /(?:^|[/\\])actionables\.db$/i.test(process.env.DATABASE_URL))
+) {
+  throw new Error(
+    "Reusing a test server requires explicit nondefault WEB_PORT/API_PORT and an isolated DATABASE_URL. Verify the running server uses that database before testing.",
+  );
+}
 const webPort = process.env.WEB_PORT ?? "4173";
 const apiPort = process.env.API_PORT ?? "4174";
 const baseURL = `http://127.0.0.1:${webPort}`;
@@ -48,7 +64,7 @@ export default defineConfig({
   webServer: {
     command: `${node} scripts/start-e2e.mjs`,
     url: `${baseURL}/api/health`,
-    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "1",
+    reuseExistingServer,
     timeout: 120_000,
     env: {
       DATABASE_URL: "file:./data/actionables-e2e.db",

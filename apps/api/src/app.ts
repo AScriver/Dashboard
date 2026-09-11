@@ -33,6 +33,7 @@ import {
   statusTransitionRequestSchema,
   updateActionableRequestSchema,
   updateHelperAgentSettingsRequestSchema,
+  updateRepositoryProjectRequestSchema,
   forceReleaseAgentClaimRequestSchema,
   relationshipAuditResponseSchema,
   triageInboxQueueRequestSchema,
@@ -53,7 +54,7 @@ import {
   createActionable,
   createRepository,
   archiveImpact,
-  ArchiveVersionConflictError,
+  ScopeVersionConflictError,
   DomainValidationError,
   getDashboard,
   getActionable,
@@ -64,6 +65,7 @@ import {
   setScopeArchived,
   transitionActionable,
   updateActionable,
+  updateRepositoryProject,
   VersionConflictError,
 } from "./repository.js";
 import {
@@ -346,13 +348,13 @@ export function buildApp({
         current: error.current,
       });
     }
-    if (error instanceof ArchiveVersionConflictError) {
+    if (error instanceof ScopeVersionConflictError) {
       return problem(
         request,
         reply,
         409,
         "VERSION_CONFLICT",
-        "This archive target has a newer saved version.",
+        "This scope record has a newer saved version.",
         {
           detail: `Reload the target and retry from version ${error.currentVersion}.`,
         },
@@ -554,6 +556,38 @@ export function buildApp({
       );
     }
   });
+
+  app.patch<{ Params: { id: string } }>(
+    "/api/repositories/:id/project",
+    async (request, reply) => {
+      const parsed = updateRepositoryProjectRequestSchema.safeParse(
+        request.body,
+      );
+      if (!parsed.success)
+        return problem(
+          request,
+          reply,
+          422,
+          "VALIDATION_ERROR",
+          "Check the project assignment.",
+          { errors: fieldErrors(parsed.error) },
+        );
+      const scopes = await updateRepositoryProject(
+        prisma,
+        request.params.id,
+        parsed.data,
+      );
+      if (!scopes)
+        return problem(
+          request,
+          reply,
+          404,
+          "NOT_FOUND",
+          "Repository not found.",
+        );
+      return scopeOptionsResponseSchema.parse(scopes);
+    },
+  );
 
   app.get<{ Querystring: Record<string, unknown> }>(
     "/api/actionables",

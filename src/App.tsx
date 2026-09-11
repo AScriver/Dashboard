@@ -114,6 +114,7 @@ import {
   selectRepositoryFolder,
   updateActionable,
   updateHelperAgentSettings,
+  updateRepositoryProject,
   waiveDependency,
 } from "./api";
 import {
@@ -3940,6 +3941,158 @@ function DashboardPanel({
   );
 }
 
+/** Manage repository membership while preserving its worktrees and work. */
+function RepositoryAssignmentsSection() {
+  const queryClient = useQueryClient();
+  const scopesQuery = useQuery({
+    queryKey: ["scopes"],
+    queryFn: fetchScopeOptions,
+  });
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const projects =
+    scopesQuery.data?.projects.filter((project) => !project.archivedAt) ?? [];
+  const save = async (id: string, version: number, projectId: string) => {
+    setSaving(id);
+    setError("");
+    setNotice("");
+    try {
+      const scopes = await updateRepositoryProject(id, {
+        version,
+        projectId: projectId || null,
+      });
+      queryClient.setQueryData(["scopes"], scopes);
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      await Promise.all(
+        ["actionables", "actionable", "dashboard"].map((key) =>
+          queryClient.invalidateQueries({ queryKey: [key] }),
+        ),
+      );
+      setNotice("Repository project assignment saved.");
+    } catch (caught) {
+      setError(
+        caught instanceof ApiProblem
+          ? [
+              caught.problem.title,
+              ...Object.values(caught.problem.errors ?? {}).flat(),
+            ].join(" ")
+          : errorMessage(caught),
+      );
+      if (
+        caught instanceof ApiProblem &&
+        caught.problem.code === "VERSION_CONFLICT"
+      ) {
+        await scopesQuery.refetch();
+        setDrafts((current) => {
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
+      }
+    } finally {
+      setSaving(null);
+    }
+  };
+  return (
+    <section
+      className="settings-integration settings-form"
+      aria-labelledby="repository-assignments-title"
+    >
+      <h2 id="repository-assignments-title">Repository projects</h2>
+      <p id="repository-assignments-help">
+        Choose No project to remove an assignment. Worktrees, Actionables and
+        their history move with the repository. Release any agent claims before
+        changing its project. Archived repositories must be restored first.
+      </p>
+      {scopesQuery.isPending && <p role="status">Loading repositories…</p>}
+      {scopesQuery.isError && (
+        <div role="alert">
+          Could not load repositories.{" "}
+          <button
+            type="button"
+            className="toolbar-button"
+            onClick={() => void scopesQuery.refetch()}
+          >
+            Retry repositories
+          </button>
+        </div>
+      )}
+      {projects.flatMap((project) =>
+        project.repositories
+          .filter((repository) => !repository.archivedAt)
+          .map((repository) => {
+            const current = project.isUnassigned ? "" : project.id;
+            const value = drafts[repository.id] ?? current;
+            return (
+              <form
+                key={repository.id}
+                className="repository-assignment"
+                aria-label={`Project assignment for ${repository.name}`}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void save(repository.id, repository.version, value);
+                }}
+              >
+                <label
+                  className="form-field"
+                  htmlFor={`repository-project-${repository.id}`}
+                >
+                  <span>{repository.name}</span>
+                  <select
+                    id={`repository-project-${repository.id}`}
+                    value={value}
+                    disabled={saving !== null}
+                    aria-describedby="repository-assignments-help"
+                    onChange={(event) => {
+                      setDrafts((draft) => ({
+                        ...draft,
+                        [repository.id]: event.target.value,
+                      }));
+                      setError("");
+                      setNotice("");
+                    }}
+                  >
+                    <option value="">No project</option>
+                    {projects
+                      .filter((candidate) => !candidate.isUnassigned)
+                      .map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <button
+                  type="submit"
+                  className="toolbar-button"
+                  disabled={saving !== null || current === value}
+                >
+                  {saving === repository.id ? "Saving…" : "Save assignment"}
+                </button>
+              </form>
+            );
+          }),
+      )}
+      {scopesQuery.isSuccess &&
+        !projects.some((project) =>
+          project.repositories.some((repository) => !repository.archivedAt),
+        ) && <p>No active repositories.</p>}
+      {error && (
+        <p className="inline-error" role="alert">
+          {error}
+        </p>
+      )}
+      {notice && <p role="status">{notice}</p>}
+    </section>
+  );
+}
+
 function SettingsPanel() {
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({
@@ -4237,6 +4390,7 @@ function SettingsPanel() {
         </div>
       </header>
       <AgentIntegrationSettingsSection />
+      <RepositoryAssignmentsSection />
       <form
         className="settings-form"
         noValidate

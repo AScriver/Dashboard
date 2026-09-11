@@ -25,6 +25,7 @@ import {
   type CreateActionableRequest,
   type CreateRepositoryRequest,
   type CreateRepositoryResponse,
+  type UpdateRepositoryProjectRequest,
   type RepositoryFolderPickerResponse,
   type GroomActionableNotesRequest,
   type GroomActionableNotesResponse,
@@ -165,6 +166,19 @@ export async function selectRepositoryFolder(): Promise<RepositoryFolderPickerRe
   return repositoryFolderPickerResponseSchema.parse(
     await requestJson("/api/repositories/folder-picker", {
       method: "POST",
+    }),
+  );
+}
+
+/** Save a project assignment without deleting the repository or its work. */
+export async function updateRepositoryProject(
+  id: string,
+  input: UpdateRepositoryProjectRequest,
+): Promise<ScopeOptionsResponse> {
+  return scopeOptionsResponseSchema.parse(
+    await requestJson(`/api/repositories/${encodeURIComponent(id)}/project`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
     }),
   );
 }

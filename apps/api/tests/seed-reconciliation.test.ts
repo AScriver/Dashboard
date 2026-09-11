@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DataImportService, PortableImportError } from "../src/data-import.js";
 import { createPrismaClient, type AppPrismaClient } from "../src/database.js";
 import { readSampleSeed } from "../src/import-seed.js";
+import { updateRepositoryProject } from "../src/repository.js";
 import {
   exportPortableDocument,
   sampleSeedToPortable,
@@ -78,6 +79,39 @@ async function commitPreview(
 async function seedDocument() {
   return sampleSeedToPortable(await readSampleSeed());
 }
+
+it("preserves repository reassignment when the same seed is imported again", async () => {
+  const prisma = await freshDatabase();
+  const service = new DataImportService(prisma);
+  const document = await seedDocument();
+  await commitPreview(service, await service.preview(document));
+  const repository = await prisma.repository.findFirstOrThrow();
+  const removed = await updateRepositoryProject(prisma, repository.id, {
+    version: repository.version,
+    projectId: null,
+  });
+  const unassigned = removed!.projects.find((project) => project.isUnassigned)!;
+  const exported = await exportPortableDocument(prisma);
+  const preview = await service.preview(document);
+  expect(preview.canCommit).toBe(true);
+  await commitPreview(service, preview);
+  expect(
+    await prisma.repository.findUniqueOrThrow({ where: { id: repository.id } }),
+  ).toMatchObject({ projectId: unassigned.id });
+  expect(
+    await prisma.worktree.count({
+      where: { repositoryId: repository.id, projectId: { not: unassigned.id } },
+    }),
+  ).toBe(0);
+  expect(
+    await prisma.actionable.count({
+      where: { repositoryId: repository.id, projectId: { not: unassigned.id } },
+    }),
+  ).toBe(0);
+  expect(
+    semanticPortableSnapshot(await exportPortableDocument(prisma)),
+  ).toEqual(semanticPortableSnapshot(exported));
+});
 
 function actionableClassification(
   preview: ImportPreviewResponse,

@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 test("adds an additional repository and makes it immediately selectable", async ({
@@ -369,4 +370,114 @@ test("hides archived projects from the sidebar after refresh", async ({
       expect(restored.ok()).toBeTruthy();
     }
   }
+});
+
+test("removes and restores project assignment in Settings while retaining usable repository work", async ({
+  page,
+}) => {
+  const suffix = Date.now();
+  const name = `Reassign browser repo ${suffix}`;
+  const scopes = await (await page.request.get("/api/scopes")).json();
+  const project = scopes.projects.find(
+    (item: { archivedAt: string | null; isUnassigned: boolean }) =>
+      !item.archivedAt && !item.isUnassigned,
+  );
+  const created = await (
+    await page.request.post("/api/repositories", {
+      data: {
+        projectMode: "existing",
+        projectId: project.id,
+        name,
+        localPath: `C:\\repos\\Reassign-${suffix}`,
+      },
+    })
+  ).json();
+  await page.goto("/settings");
+  const section = page.getByRole("region", { name: "Repository projects" });
+  const form = section.getByRole("form", {
+    name: `Project assignment for ${name}`,
+  });
+  const select = form.getByRole("combobox", { name, exact: true });
+  await expect(select).toHaveValue(project.id);
+  await select.selectOption("");
+  await select.press("Tab");
+  await expect(
+    form.getByRole("button", { name: "Save assignment" }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(section.getByRole("status")).toHaveText(
+    "Repository project assignment saved.",
+  );
+  await page.reload();
+  await expect(select).toHaveValue("");
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await select.scrollIntoViewIfNeeded();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole("button", { name: "Expand left sidebar" }).click();
+  await page
+    .locator("aside.sidebar")
+    .getByRole("button", { name, exact: true })
+    .click();
+  await expect(page).toHaveURL(
+    new RegExp(`repository=${created.repositoryId}`),
+  );
+  await page.getByRole("button", { name: "New actionable" }).click();
+  const dialog = page.getByRole("dialog", { name: "New actionable" });
+  await expect(
+    dialog
+      .getByRole("combobox", { name: "Project", exact: true })
+      .locator("option:checked"),
+  ).toHaveText("No project");
+  await expect(
+    dialog
+      .getByRole("combobox", { name: "Repository", exact: true })
+      .locator("option:checked"),
+  ).toHaveText(name);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.goto("/settings");
+  await select.selectOption(project.id);
+  let fail = true;
+  await page.route(
+    `**/api/repositories/${created.repositoryId}/project`,
+    async (route) => {
+      if (!fail) {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 409,
+        json: {
+          type: "https://actionables.local/problems/version_conflict",
+          title: "This scope record has a newer saved version.",
+          status: 409,
+          code: "VERSION_CONFLICT",
+          requestId: "assignment-conflict",
+        },
+      });
+    },
+  );
+  await form.getByRole("button", { name: "Save assignment" }).click();
+  await expect(section.getByRole("alert")).toContainText("newer saved version");
+  await expect(select).toHaveValue("");
+  fail = false;
+  await select.selectOption(project.id);
+  await form.getByRole("button", { name: "Save assignment" }).click();
+  await expect(section.getByRole("status")).toHaveText(
+    "Repository project assignment saved.",
+  );
+  await page.reload();
+  await expect(select).toHaveValue(project.id);
+  const after = await (await page.request.get("/api/scopes")).json();
+  const restored = after.projects
+    .find((item: { id: string }) => item.id === project.id)
+    .repositories.find(
+      (item: { id: string }) => item.id === created.repositoryId,
+    );
+  expect(restored.worktrees[0].id).toBe(created.worktreeId);
 });

@@ -79,6 +79,14 @@ No `.env` file is required. The default SQLite database is created at
 troubleshooting instructions, see
 [Windows setup and local operation](docs/windows-setup.md).
 
+Manage existing repository assignments under **Settings → Repository projects**.
+Choose another active project or **No project**, then **Save assignment**.
+Removing an assignment keeps the repository available under No project, with
+the same local path, worktrees, Actionable IDs, history and workflow status.
+Release active or expired agent claims before moving their repository; restore
+an archived repository or project before changing its assignment. These changes
+affect dashboard organization only and never move folders or modify Git.
+
 ## Connect Codex
 
 The Codex connection is opt-in. Generate an `ACTIONABLES_MCP_TOKEN` by following

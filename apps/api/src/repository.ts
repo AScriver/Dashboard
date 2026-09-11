@@ -20,6 +20,7 @@ import {
   type CreateActionableRequest,
   type CreateRepositoryRequest,
   type CreateRepositoryResponse,
+  type UpdateRepositoryProjectRequest,
   type CreateValidationRecordRequest,
   type ScopeOptionsResponse,
   type Status,
@@ -111,9 +112,9 @@ export class VersionConflictError extends Error {
   }
 }
 
-export class ArchiveVersionConflictError extends Error {
+export class ScopeVersionConflictError extends Error {
   constructor(public readonly currentVersion: number) {
-    super("This record changed after the archive action began.");
+    super("This scope record has a newer saved version.");
   }
 }
 
@@ -802,6 +803,7 @@ export async function listScopeOptions(
     projects: projects.map((project) => ({
       id: project.id,
       name: project.name,
+      isUnassigned: project.externalKey === unassignedProjectKey,
       version: project.version,
       archivedAt: project.archivedAt?.toISOString() ?? null,
       archiveState: {
@@ -857,6 +859,131 @@ export function normalizedLocalPath(value: string) {
     : normalized;
 }
 
+const unassignedProjectKey = "system-unassigned-project";
+const unassignedProjectName = "No project";
+
+/** Move the complete repository scope without changing identity or workflow. */
+export async function updateRepositoryProject(
+  prisma: AppPrismaClient,
+  id: string,
+  input: UpdateRepositoryProjectRequest,
+): Promise<ScopeOptionsResponse | null> {
+  return prisma.$transaction(async (transaction) => {
+    const repository = await transaction.repository.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+    if (!repository) return null;
+    if (repository.version !== input.version)
+      throw new ScopeVersionConflictError(repository.version);
+    if (repository.archivedAt || repository.project.archivedAt)
+      throw new DomainValidationError(
+        "ARCHIVED_SCOPE",
+        {
+          projectId: [
+            "Restore the repository and its project before changing the assignment.",
+          ],
+        },
+        "This repository is archived.",
+      );
+
+    const project =
+      input.projectId === null
+        ? await transaction.project.upsert({
+            where: { externalKey: unassignedProjectKey },
+            create: {
+              externalKey: unassignedProjectKey,
+              name: unassignedProjectName,
+            },
+            update: {},
+          })
+        : await transaction.project.findUnique({
+            where: { id: input.projectId },
+          });
+    if (!project || project.archivedAt)
+      throw new DomainValidationError(
+        "INVALID_PROJECT",
+        { projectId: ["Choose an active project."] },
+        "The selected project is unavailable.",
+      );
+    if (project.id === repository.projectId)
+      return listScopeOptions(transaction);
+
+    const claim = await transaction.agentTaskClaim.findFirst({
+      where: { actionable: { repositoryId: id } },
+      select: { actionable: { select: { sourceOrdinal: true } } },
+    });
+    if (claim)
+      throw new DomainValidationError(
+        "REPOSITORY_CLAIMED",
+        {
+          projectId: [
+            `Release the agent claim on #${claim.actionable.sourceOrdinal} before changing the repository assignment, including expired claims.`,
+          ],
+        },
+        "This repository has an unreleased agent claim.",
+      );
+    const siblings = await transaction.repository.findMany({
+      where: { projectId: project.id, id: { not: id } },
+      select: { name: true },
+    });
+    if (
+      siblings.some(
+        (sibling) =>
+          sibling.name.localeCompare(repository.name, undefined, {
+            sensitivity: "accent",
+          }) === 0,
+      )
+    )
+      throw new DomainValidationError(
+        "DUPLICATE_REPOSITORY",
+        {
+          projectId: [
+            "A repository with this name is already tracked in that project.",
+          ],
+        },
+        "This project already contains a repository with that name.",
+      );
+
+    const updated = await transaction.repository.updateMany({
+      where: { id, version: input.version },
+      data: { projectId: project.id, version: { increment: 1 } },
+    });
+    if (updated.count !== 1)
+      throw new ScopeVersionConflictError(repository.version);
+    await transaction.worktree.updateMany({
+      where: { repositoryId: id },
+      data: { projectId: project.id, version: { increment: 1 } },
+    });
+    const actionables = await transaction.actionable.findMany({
+      where: { repositoryId: id },
+      select: { id: true },
+    });
+    await transaction.actionable.updateMany({
+      where: { repositoryId: id },
+      data: {
+        projectId: project.id,
+        version: { increment: 1 },
+        updatedLabel: "just now",
+      },
+    });
+    await transaction.activityEvent.createMany({
+      data: actionables.map((actionable) => ({
+        actionableId: actionable.id,
+        type: "scope-changed",
+        summary: `Moved repository from ${repository.project.name} to ${project.name}`,
+        metadataJson: inputJson({
+          origin: "user",
+          previousProjectId: repository.projectId,
+          projectId: project.id,
+          repositoryId: id,
+        }),
+      })),
+    });
+    return listScopeOptions(transaction);
+  });
+}
+
 export async function createRepository(
   prisma: AppPrismaClient,
   input: CreateRepositoryRequest,
@@ -880,6 +1007,16 @@ export async function createRepository(
       projectId = project.id;
     } else {
       const projectName = input.projectName.trim();
+      if (projectName.toLowerCase() === unassignedProjectName.toLowerCase())
+        throw new DomainValidationError(
+          "INVALID_PROJECT",
+          {
+            projectName: [
+              "No project is reserved for repositories without an assignment.",
+            ],
+          },
+          "Choose a different project name.",
+        );
       const projects = await transaction.project.findMany({
         where: { archivedAt: null },
         select: { name: true },
@@ -1405,7 +1542,7 @@ export async function setScopeArchived(
     const current = await scopeTarget(transaction, kind, id);
     if (!current) return null;
     if (current.version !== version)
-      throw new ArchiveVersionConflictError(current.version);
+      throw new ScopeVersionConflictError(current.version);
     if (!archived) {
       if (kind === "repository") {
         const repository = await transaction.repository.findUnique({
@@ -1451,7 +1588,7 @@ export async function setScopeArchived(
               data,
             });
     if (result.count !== 1)
-      throw new ArchiveVersionConflictError(current.version);
+      throw new ScopeVersionConflictError(current.version);
     const affected = await transaction.actionable.findMany({
       where: scopeWhere(kind, id),
       select: { id: true, status: true },
