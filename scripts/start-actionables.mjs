@@ -45,6 +45,7 @@ function displayError(error) {
   return messages.join("\nCaused by: ");
 }
 
+/** Select shared runtime ports and launch the requested service pair. */
 export async function startActionables(
   mode,
   { environment = process.env, spawnProcess = spawn, output = console } = {},
@@ -91,14 +92,36 @@ export async function startActionables(
     });
   }
 
+  try {
+    return {
+      runtimeConfig: selection.runtimeConfig,
+      statePath: selection.statePath,
+      ...superviseChildren(childSpecs(mode), {
+        environment: runtimeEnvironment,
+        spawnProcess,
+        output,
+      }),
+    };
+  } catch (error) {
+    throw new Error(`Unable to start Actionables in ${mode} mode.`, {
+      cause: error,
+    });
+  }
+}
+
+/** Start Node services with sibling shutdown and an idempotent stop function. */
+export function superviseChildren(
+  specs,
+  { environment = process.env, spawnProcess = spawn, output = console } = {},
+) {
   const children = [];
   try {
-    for (const spec of childSpecs(mode)) {
+    for (const spec of specs) {
       children.push({
         ...spec,
         process: spawnProcess(process.execPath, spec.args, {
           stdio: "inherit",
-          env: runtimeEnvironment,
+          env: environment,
         }),
       });
     }
@@ -106,9 +129,7 @@ export async function startActionables(
     for (const child of children) {
       if (child.process.exitCode === null) child.process.kill();
     }
-    throw new Error(`Unable to start Actionables in ${mode} mode.`, {
-      cause: error,
-    });
+    throw error;
   }
 
   let stopping;
@@ -159,8 +180,6 @@ export async function startActionables(
   process.once("SIGTERM", stopForSignal);
 
   return {
-    runtimeConfig: selection.runtimeConfig,
-    statePath: selection.statePath,
     children: children.map((child) => child.process),
     stop,
   };

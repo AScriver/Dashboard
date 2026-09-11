@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { build, createServer as createViteServer, preview } from "vite";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startActionables } from "../../../scripts/start-actionables.mjs";
+import {
+  startActionables,
+  superviseChildren,
+} from "../../../scripts/start-actionables.mjs";
 
 const resources = [];
 
@@ -135,6 +138,60 @@ afterEach(async () => {
 });
 
 describe.sequential("startup launcher proxy integration", () => {
+  it.each(["stop", "exit", "error"])(
+    "shuts down supervised services and removes signal handlers after %s",
+    async (trigger) => {
+      const children = [fakeChild(), fakeChild()];
+      const kills = children.map((child) => vi.spyOn(child, "kill"));
+      const signalCounts = ["SIGINT", "SIGTERM"].map((signal) =>
+        process.listenerCount(signal),
+      );
+      const previousExitCode = process.exitCode;
+      const errors = [];
+      let childIndex = 0;
+      const running = superviseChildren(
+        [
+          { label: "API", args: [] },
+          { label: "Web", args: [] },
+        ],
+        {
+          spawnProcess: () => children[childIndex++],
+          output: { error: (message) => errors.push(message) },
+        },
+      );
+      try {
+        if (trigger === "exit") {
+          children[0].exitCode = 2;
+          children[0].emit("exit", 2, null);
+        } else if (trigger === "error") {
+          children[0].emit("error", new Error("spawn failed"));
+        }
+
+        const stopped = running.stop();
+        expect(running.stop()).toBe(stopped);
+        await stopped;
+        expect(kills[0]).toHaveBeenCalledTimes(trigger === "exit" ? 0 : 1);
+        expect(kills[1]).toHaveBeenCalledTimes(1);
+        expect(process.exitCode).toBe(
+          trigger === "exit" ? 2 : trigger === "error" ? 1 : 0,
+        );
+        expect(errors).toEqual(
+          trigger === "exit"
+            ? ["API exited unexpectedly (2)."]
+            : trigger === "error"
+              ? ["API failed to start.\nspawn failed"]
+              : [],
+        );
+        expect(
+          ["SIGINT", "SIGTERM"].map((signal) => process.listenerCount(signal)),
+        ).toEqual(signalCounts);
+      } finally {
+        await running.stop();
+        process.exitCode = previousExitCode;
+      }
+    },
+  );
+
   it.each(["development", "production"])(
     "propagates one fallback pair through the real Vite %s proxy",
     async (mode) => {

@@ -211,6 +211,10 @@ pnpm run verify:migrations
 pnpm run verify:living-plan
 ```
 
+The Playwright launcher prepares `data/actionables-e2e.db` before starting the
+API and Vite on the test ports. It shares the application launcher's child
+supervision, so interruption or a child failure closes both test services.
+
 ## Troubleshooting
 
 ### Native SQLite installation or load

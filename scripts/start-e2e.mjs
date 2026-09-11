@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { rm } from "node:fs/promises";
 import process from "node:process";
 
@@ -24,51 +24,21 @@ for (const args of setupCommands) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-const children = [
-  spawn(
-    process.execPath,
-    ["node_modules/tsx/dist/cli.mjs", "apps/api/src/server.ts"],
-    { stdio: "inherit", env: process.env },
-  ),
-  spawn(
-    process.execPath,
-    ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", webPort],
-    { stdio: "inherit", env: process.env },
-  ),
-];
-
-let stopping = false;
-function stop(exitCode = 0) {
-  if (stopping) return;
-  stopping = true;
-  for (const child of children) {
-    if (child.exitCode === null) child.kill();
-  }
-  Promise.all(
-    children.map((child) =>
-      child.exitCode !== null
-        ? Promise.resolve()
-        : new Promise((resolve) => child.once("exit", resolve)),
-    ),
-  ).finally(() => {
-    process.exitCode = exitCode;
-  });
-}
-
-for (const child of children) {
-  child.once("error", (error) => {
-    console.error(error);
-    stop(1);
-  });
-  child.once("exit", (code, signal) => {
-    if (!stopping) {
-      console.error(
-        `E2E child exited unexpectedly (${signal ?? code ?? "unknown"}).`,
-      );
-      stop(code || 1);
-    }
-  });
-}
-
-process.once("SIGINT", () => stop(0));
-process.once("SIGTERM", () => stop(0));
+// The launcher imports contracts, so load it after setup builds that package.
+const { superviseChildren } = await import("./start-actionables.mjs");
+superviseChildren([
+  {
+    label: "API",
+    args: ["node_modules/tsx/dist/cli.mjs", "apps/api/src/server.ts"],
+  },
+  {
+    label: "Web",
+    args: [
+      "node_modules/vite/bin/vite.js",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      webPort,
+    ],
+  },
+]);
