@@ -1,4 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
+import type { ActivityEvent } from "@actionables/contracts";
 import { expect, test, type Page } from "@playwright/test";
 
 test.setTimeout(120_000);
@@ -17,6 +18,105 @@ async function expectNoAxeViolations(page: Page, state: string) {
       .join("; ")}`,
   ).toEqual([]);
 }
+
+test("@a11y activity timeline adds a keyboard stop only when scrolling needs one", async ({
+  page,
+}) => {
+  const { items } = await (await page.request.get("/api/actionables")).json();
+  const id = items[0].id;
+  const longActivity: ActivityEvent[] = Array.from(
+    { length: 8 },
+    (_, index) => ({
+      id: `keyboard-activity-${index}`,
+      type: "status-transition",
+      summary: `Recorded workflow change ${index + 1}`,
+      context: {},
+      occurredAt: "2026-09-11T12:00:00.000Z",
+    }),
+  );
+  let activity = longActivity;
+  await page.route(`**/api/actionables/${id}`, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({
+      response,
+      json: { item: { ...body.item, activity } },
+    });
+  });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`/actionables/${id}`);
+  const activityTab = page.getByRole("tab", { name: "Activity", exact: true });
+  const content = page.locator(".inspector-content");
+  await activityTab.click();
+  await expect
+    .poll(() =>
+      content.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+  await expectNoAxeViolations(page, "overflowing activity without links");
+  await activityTab.press("Tab");
+  await expect(content).toBeFocused();
+  await expect(content).toHaveAccessibleName("Activity");
+  await expect(content).toHaveCSS("outline-style", "solid");
+  await content.press("PageDown");
+  await expect
+    .poll(() => content.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+
+  await page.setViewportSize({ width: 1280, height: 2000 });
+  await expect
+    .poll(() =>
+      content.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(false);
+  await expect(content).not.toHaveAttribute("tabindex");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(content).toHaveAttribute("tabindex", "0");
+  await page.getByRole("tab", { name: "Validation", exact: true }).click();
+  await expect(content).not.toHaveAttribute("tabindex");
+
+  activity = longActivity.slice(0, 1);
+  await page.reload();
+  await activityTab.click();
+  await expect
+    .poll(() =>
+      content.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(false);
+  await expect(content).not.toHaveAttribute("tabindex");
+  await activityTab.press("Tab");
+  await expect(content).not.toBeFocused();
+
+  activity = longActivity.map((event, index) =>
+    index === 0
+      ? {
+          ...event,
+          context: {
+            reason:
+              "See the [workflow reference](https://example.com/workflow).",
+          },
+        }
+      : event,
+  );
+  await page.reload();
+  await activityTab.click();
+  const link = content.getByRole("link", { name: "workflow reference" });
+  await expect(link).toBeVisible();
+  await expect(content).not.toHaveAttribute("tabindex");
+  await activityTab.press("Tab");
+  await expect(link).toBeFocused();
+  await link.press("PageDown");
+  await expect
+    .poll(() => content.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await expectNoAxeViolations(page, "overflowing activity with a link");
+});
 
 test("@a11y representative dashboard, list, detail, form, lifecycle, validation, relationship, filter, and archive states pass axe", async ({
   page,

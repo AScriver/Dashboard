@@ -2070,6 +2070,40 @@ function Inspector({
     helperSettingsQuery.data?.noteGroomerEnabled === true;
   const relationshipAuditorEnabled =
     helperSettingsQuery.data?.relationshipAuditorEnabled === true;
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || activeTab !== "activity") return;
+
+    const updateFocusability = () => {
+      // Timeline links already provide keyboard access to their scroll container.
+      const hasLink = [
+        ...content.querySelectorAll<HTMLAnchorElement>("a[href]"),
+      ].some((link) => link.tabIndex >= 0 && link.getClientRects().length > 0);
+      const overflows =
+        content.scrollHeight > content.clientHeight ||
+        content.scrollWidth > content.clientWidth;
+      if (overflows && !hasLink) content.tabIndex = 0;
+      else content.removeAttribute("tabindex");
+    };
+    const resizeObserver = new ResizeObserver(updateFocusability);
+    resizeObserver.observe(content);
+    if (content.firstElementChild)
+      resizeObserver.observe(content.firstElementChild);
+    const mutationObserver = new MutationObserver(updateFocusability);
+    mutationObserver.observe(content, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    updateFocusability();
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      content.removeAttribute("tabindex");
+    };
+  }, [activeTab, selected.activity]);
 
   return (
     <>
@@ -2182,7 +2216,12 @@ function Inspector({
         ))}
       </nav>
 
-      <div className="inspector-content">
+      <div
+        className="inspector-content"
+        ref={contentRef}
+        role={activeTab === "activity" ? "region" : undefined}
+        aria-label={activeTab === "activity" ? "Activity" : undefined}
+      >
         {activeTab === "finding" && (
           <>
             <section className="inspector-section">

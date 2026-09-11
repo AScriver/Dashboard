@@ -7,6 +7,22 @@ to those surfaces below are historical. The current 52-test Edge browser suite
 passed, including the remaining automated accessibility scenarios, keyboard
 navigation, and mobile/reflow checks. See [removal verification](import-export-removal.md).
 
+September 11, 2026 update: the Activity inspector now receives `tabindex="0"`
+only while it overflows and has no keyboard-reachable timeline link. Short and
+linked timelines retain their existing tab order. Content and viewport changes
+refresh that decision; the scroll region has an accessible name and a visible
+keyboard focus outline. Native keyboard scrolling is preserved, following the
+[W3C scrollable-region rule](https://www.w3.org/WAI/standards-guidelines/act/rules/0ssw9k/).
+
+The new regression reproduced axe's `scrollable-region-focusable` violation
+before the fix, then passed in installed Edge and Playwright Chromium. It checks
+Tab/PageDown, the focus outline, short and linked timelines, resizing, and tab
+switching. All eight tests in the accessibility and keyboard/responsive suites
+passed in Edge. A separate Edge preview check of an existing text-only timeline
+confirmed Tab focus, the visible outline, and PageDown scrolling. These are
+focused checks; the full release suite and a separate screen-reader product
+session were not rerun for this change.
+
 Platform: Windows 11 Enterprise 25H2, build 26200.8390, 64-bit
 
 Browsers: Playwright Chromium 149.0.7827.55; installed Edge 150.0.4078.83; installed Chrome 150.0.7871.182
