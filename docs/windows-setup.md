@@ -17,6 +17,12 @@ the updated build. Existing settings retain their values, and unset templates
 use the application defaults. Configure or reset each template under
 **Settings → Codex start prompts**; see the [template variables](../README.md#hand-work-to-codex).
 
+Monorepo launch targeting uses an optional **Project directory** under
+**Settings → Repository projects** or **Add repository**. After upgrading,
+apply the normal database migrations; existing repositories receive a blank
+directory and retain checkout-root launches. See the [repository setup](../README.md#run-actionables-locally)
+for sibling projects, worktree resolution and unavailable-directory recovery.
+
 The agent MCP endpoint is disabled unless `ACTIONABLES_MCP_TOKEN` is set. See [Agent task MCP endpoint](mcp-agent-tasks.md) for the local token and Codex configuration.
 
 ## Optional Codex instructions and workflow skill

@@ -1,5 +1,124 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
+
+test("registers a monorepo project and opens its checked directory with recoverable errors", async ({
+  page,
+}) => {
+  const checkout = await mkdtemp(
+    resolve(tmpdir(), "actionables-browser-monorepo-"),
+  );
+  const name = `Monorepo alpha ${Date.now()}`;
+  await mkdir(resolve(checkout, "apps/alpha"), { recursive: true });
+  await mkdir(resolve(checkout, "apps/beta"), { recursive: true });
+  await writeFile(resolve(checkout, "AGENTS.md"), "Root guidance");
+  await writeFile(resolve(checkout, "apps/alpha/AGENTS.md"), "Alpha guidance");
+  await writeFile(resolve(checkout, "apps/beta/AGENTS.md"), "Beta guidance");
+  try {
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Add repository", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "Add repository" });
+    await dialog.getByLabel("Repository name").fill(name);
+    await dialog.getByLabel("Local path").fill(checkout);
+    await dialog
+      .getByLabel("Project directory", { exact: true })
+      .fill("apps/alpha");
+    const response = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/repositories") &&
+        response.request().method() === "POST",
+    );
+    await dialog
+      .getByRole("button", { name: "Add repository", exact: true })
+      .click();
+    const registration = await (await response).json();
+    await expect(dialog).toHaveCount(0);
+    const created = await page.request.post("/api/actionables", {
+      data: {
+        projectId: registration.projectId,
+        repositoryId: registration.repositoryId,
+        worktreeId: registration.worktreeId,
+        title: "Monorepo browser launch",
+        priority: "Medium",
+        effort: "S",
+        evidenceState: "Unclassified",
+        finding: "",
+        description: "",
+        research: [],
+        validation: [],
+        tags: [],
+        userSources: [],
+      },
+    });
+    expect(created.ok()).toBe(true);
+    const task = (await created.json()).item;
+    await page.goto(`/actionables/${task.id}`);
+    const link = page.getByRole("link", { name: "Open in Codex", exact: true });
+    await expect(link).toBeVisible();
+    expect(
+      new URL((await link.getAttribute("href"))!).searchParams.get("path"),
+    ).toBe(await realpath(resolve(checkout, "apps/alpha")));
+    await page.goto("/settings");
+    const directory = page.getByLabel(`Project directory for ${name}`, {
+      exact: true,
+    });
+    await expect(directory).toHaveValue("apps/alpha");
+    await directory.fill("../outside");
+    const assignment = page.getByRole("form", {
+      name: `Project assignment for ${name}`,
+    });
+    await assignment.getByRole("button", { name: "Save assignment" }).click();
+    await expect(page.getByRole("alert")).toContainText("relative directory");
+    await directory.fill("apps/beta");
+    await assignment.getByRole("button", { name: "Save assignment" }).click();
+    await expect(
+      page
+        .getByRole("region", { name: "Repository projects" })
+        .getByRole("status"),
+    ).toContainText("assignment saved");
+    await page.reload();
+    await expect(directory).toHaveValue("apps/beta");
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await rename(
+      resolve(checkout, "apps/beta"),
+      resolve(checkout, "apps/moved"),
+    );
+    await page.goto(`/actionables/${task.id}`);
+    await expect(page.getByRole("alert")).toContainText(
+      "missing or inaccessible",
+    );
+    await expect(link).toHaveCount(0);
+    await rename(
+      resolve(checkout, "apps/moved"),
+      resolve(checkout, "apps/beta"),
+    );
+    await page.getByRole("button", { name: "Retry project directory" }).click();
+    await expect(link).toBeVisible();
+    expect(
+      new URL((await link.getAttribute("href"))!).searchParams.get("path"),
+    ).toBe(await realpath(resolve(checkout, "apps/beta")));
+  } finally {
+    await rm(checkout, { recursive: true, force: true });
+  }
+});
 
 test("adds an additional repository and makes it immediately selectable", async ({
   page,
@@ -401,6 +520,10 @@ test("removes and restores project assignment in Settings while retaining usable
   await expect(select).toHaveValue(project.id);
   await select.selectOption("");
   await select.press("Tab");
+  await expect(
+    form.getByLabel(`Project directory for ${name}`, { exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(
     form.getByRole("button", { name: "Save assignment" }),
   ).toBeFocused();

@@ -89,6 +89,7 @@ it("preserves repository reassignment when the same seed is imported again", asy
   const removed = await updateRepositoryProject(prisma, repository.id, {
     version: repository.version,
     projectId: null,
+    projectRoot: "apps/web",
   });
   const unassigned = removed!.projects.find((project) => project.isUnassigned)!;
   const exported = await exportPortableDocument(prisma);
@@ -97,7 +98,7 @@ it("preserves repository reassignment when the same seed is imported again", asy
   await commitPreview(service, preview);
   expect(
     await prisma.repository.findUniqueOrThrow({ where: { id: repository.id } }),
-  ).toMatchObject({ projectId: unassigned.id });
+  ).toMatchObject({ projectId: unassigned.id, projectRoot: "apps/web" });
   expect(
     await prisma.worktree.count({
       where: { repositoryId: repository.id, projectId: { not: unassigned.id } },

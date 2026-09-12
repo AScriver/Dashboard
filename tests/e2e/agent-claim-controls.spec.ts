@@ -280,6 +280,41 @@ async function expectNoStartActions(page: Page) {
   ).toHaveCount(0);
 }
 
+test("claimed monorepo work never checks or offers a new project launch", async ({
+  page,
+}) => {
+  const original = await detailFixture(page);
+  const fixture = await routeDetail(
+    page,
+    {
+      ...original,
+      projectRoot: "apps/web",
+      workspacePath: "C:\\repo\\apps\\web",
+    },
+    "active",
+  );
+  let checks = 0;
+  await page.route(
+    `**/api/actionables/${ACTIONABLE_ID}/codex-workspace`,
+    async (route) => {
+      checks += 1;
+      await route.fulfill({ json: { path: "C:\\repo\\apps\\web" } });
+    },
+  );
+  for (const state of ["active", "expired"] as const) {
+    fixture.setState(state);
+    await page.goto(`/actionables/${ACTIONABLE_ID}`);
+    await page.reload();
+    await expect(
+      page.getByRole("button", {
+        name: /Force release claim held|Release expired claim held/,
+      }),
+    ).toBeVisible();
+    await expectNoStartActions(page);
+    expect(checks).toBe(0);
+  }
+});
+
 test("top-level and direct-subtask actions use the exact generated prompt", async ({
   page,
   context,

@@ -1,6 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, open, readFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1900,6 +1908,115 @@ describe("Actionables MCP", () => {
       await transport.close();
     }
   }, 15_000);
+
+  it("selects the longest registered monorepo project and preserves worktree ownership", async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), "actionables-monorepo-"));
+    const checkout = resolve(directory, "main");
+    const worktree = resolve(directory, "branch");
+    await mkdir(checkout);
+    execFileSync("git", ["init", checkout], {
+      stdio: "pipe",
+      windowsHide: true,
+    });
+    for (const root of ["", "apps/alpha", "apps/alpha/nested", "apps/beta"]) {
+      await mkdir(resolve(checkout, root), { recursive: true });
+      await writeFile(
+        resolve(checkout, root, "AGENTS.md"),
+        `Instructions for ${root || "root"}`,
+      );
+    }
+    execFileSync("git", ["-C", checkout, "add", "."], {
+      stdio: "pipe",
+      windowsHide: true,
+    });
+    execFileSync(
+      "git",
+      [
+        "-C",
+        checkout,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.test",
+        "commit",
+        "-m",
+        "fixture",
+      ],
+      { stdio: "pipe", windowsHide: true },
+    );
+    execFileSync(
+      "git",
+      ["-C", checkout, "worktree", "add", "-b", "fixture-branch", worktree],
+      { stdio: "pipe", windowsHide: true },
+    );
+    const project = await prisma.project.create({
+      data: { externalKey: randomUUID(), name: "Monorepo projects" },
+    });
+    const repositories = [];
+    for (const projectRoot of ["apps/alpha", "apps/alpha/nested", "apps/beta"])
+      repositories.push(
+        await prisma.repository.create({
+          data: {
+            externalKey: randomUUID(),
+            projectId: project.id,
+            name: projectRoot,
+            localPath: checkout,
+            projectRoot,
+          },
+        }),
+      );
+    const { client, transport } = await connectClient();
+    const create = (repositoryPath: string) =>
+      client.callTool({
+        name: "actionables.create_task",
+        arguments: {
+          idempotencyKey: randomUUID(),
+          repositoryPath,
+          ensureScope: true,
+          title: "Monorepo scope fixture",
+          ...validTaskClassification,
+        },
+      });
+    try {
+      for (const path of [checkout, worktree]) {
+        expect(errorOutput(await create(path)).code).toBe("INVALID_REQUEST");
+        for (const repository of repositories) {
+          const result = output<{
+            scope: { repositoryId: string; worktreeId: string };
+          }>(await create(resolve(path, repository.projectRoot!)));
+          expect(result.scope.repositoryId).toBe(repository.id);
+          const saved = await prisma.worktree.findUniqueOrThrow({
+            where: { id: result.scope.worktreeId },
+          });
+          expect(saved).toMatchObject({
+            projectId: project.id,
+            repositoryId: repository.id,
+            localPath: await realpath(path),
+          });
+          const retry = output<{ scope: typeof result.scope }>(
+            await create(resolve(path, repository.projectRoot!)),
+          );
+          expect(retry.scope).toEqual(result.scope);
+        }
+      }
+      const duplicate = await prisma.repository.create({
+        data: {
+          externalKey: randomUUID(),
+          projectId: project.id,
+          name: "Ambiguous older scope",
+          localPath: checkout,
+          projectRoot: "apps/alpha",
+        },
+      });
+      expect(
+        errorOutput(await create(resolve(checkout, "apps/alpha"))).code,
+      ).toBe("INVALID_REQUEST");
+      await prisma.repository.delete({ where: { id: duplicate.id } });
+    } finally {
+      await transport.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 20_000);
 
   it("rejects a non-Git repositoryPath without leaving partial scope records", async () => {
     const directory = await mkdtemp(resolve(tmpdir(), "actionables-scope-"));

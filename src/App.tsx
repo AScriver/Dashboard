@@ -97,6 +97,7 @@ import {
   fetchActionables,
   fetchAgentIntegrationSettings,
   fetchArchiveImpact,
+  fetchCodexWorkspace,
   fetchDashboard,
   fetchHelperAgentSettings,
   fetchScopeOptions,
@@ -1666,14 +1667,33 @@ function AgentClaimPanel({
     queryKey: ["helper-agent-settings"],
     queryFn: fetchHelperAgentSettings,
   });
+  const workspaceQuery = useQuery({
+    queryKey: [
+      "codex-workspace",
+      selected.id,
+      selected.version,
+      selected.workspacePath,
+      selected.projectRoot,
+    ],
+    queryFn: () => fetchCodexWorkspace(selected.id),
+    enabled: canRecommendPrompt && Boolean(selected.projectRoot),
+    retry: false,
+  });
   const startPrompt =
     canRecommendPrompt &&
+    (!selected.projectRoot ||
+      (workspaceQuery.isSuccess && !workspaceQuery.isFetching)) &&
     promptSettingsQuery.data &&
     !promptSettingsQuery.isError
       ? renderCodexStartPrompt(selected, promptSettingsQuery.data)
       : null;
   const preparedChatUrl = startPrompt
-    ? buildCodexNewChatUrl(startPrompt, selected.workspacePath)
+    ? buildCodexNewChatUrl(
+        startPrompt,
+        selected.projectRoot
+          ? workspaceQuery.data!.path
+          : selected.workspacePath,
+      )
     : null;
   const unavailableGuidance = selected.archiveState.isArchived
     ? "Restore this Actionable before starting agent work."
@@ -1790,6 +1810,30 @@ function AgentClaimPanel({
             onClick={() => void promptSettingsQuery.refetch()}
           >
             Retry prompt settings
+          </button>
+        </div>
+      )}
+      {canRecommendPrompt &&
+        selected.projectRoot &&
+        workspaceQuery.isFetching && (
+          <p className="agent-start-guidance" role="status">
+            Checking the project directory…
+          </p>
+        )}
+      {canRecommendPrompt && selected.projectRoot && workspaceQuery.isError && (
+        <div className="inline-error" role="alert">
+          <p>
+            {workspaceQuery.error instanceof ApiProblem
+              ? (workspaceQuery.error.problem.errors?.projectRoot?.join(" ") ??
+                workspaceQuery.error.problem.title)
+              : "Could not check the project directory. Retry before starting this task."}
+          </p>
+          <button
+            type="button"
+            className="toolbar-button"
+            onClick={() => void workspaceQuery.refetch()}
+          >
+            Retry project directory
           </button>
         </div>
       )}
@@ -3949,12 +3993,18 @@ function RepositoryAssignmentsSection() {
     queryFn: fetchScopeOptions,
   });
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [rootDrafts, setRootDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const projects =
     scopesQuery.data?.projects.filter((project) => !project.archivedAt) ?? [];
-  const save = async (id: string, version: number, projectId: string) => {
+  const save = async (
+    id: string,
+    version: number,
+    projectId: string,
+    projectRoot: string,
+  ) => {
     setSaving(id);
     setError("");
     setNotice("");
@@ -3962,9 +4012,15 @@ function RepositoryAssignmentsSection() {
       const scopes = await updateRepositoryProject(id, {
         version,
         projectId: projectId || null,
+        projectRoot,
       });
       queryClient.setQueryData(["scopes"], scopes);
       setDrafts((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setRootDrafts((current) => {
         const next = { ...current };
         delete next[id];
         return next;
@@ -3994,6 +4050,11 @@ function RepositoryAssignmentsSection() {
           delete next[id];
           return next;
         });
+        setRootDrafts((current) => {
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
       }
     } finally {
       setSaving(null);
@@ -4009,6 +4070,11 @@ function RepositoryAssignmentsSection() {
         Choose No project to remove an assignment. Worktrees, Actionables and
         their history move with the repository. Release any agent claims before
         changing its project. Archived repositories must be restored first.
+      </p>
+      <p id="repository-root-help">
+        For a monorepo, enter the relative project directory, such as apps/web.
+        Leave it blank to open the checkout root. Each project directory can be
+        tracked as a separate repository entry.
       </p>
       {scopesQuery.isPending && <p role="status">Loading repositories…</p>}
       {scopesQuery.isError && (
@@ -4029,6 +4095,8 @@ function RepositoryAssignmentsSection() {
           .map((repository) => {
             const current = project.isUnassigned ? "" : project.id;
             const value = drafts[repository.id] ?? current;
+            const root =
+              rootDrafts[repository.id] ?? repository.projectRoot ?? "";
             return (
               <form
                 key={repository.id}
@@ -4036,7 +4104,7 @@ function RepositoryAssignmentsSection() {
                 aria-label={`Project assignment for ${repository.name}`}
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void save(repository.id, repository.version, value);
+                  void save(repository.id, repository.version, value, root);
                 }}
               >
                 <label
@@ -4068,10 +4136,36 @@ function RepositoryAssignmentsSection() {
                       ))}
                   </select>
                 </label>
+                <label
+                  className="form-field"
+                  htmlFor={`repository-root-${repository.id}`}
+                >
+                  <span>Project directory for {repository.name}</span>
+                  <input
+                    id={`repository-root-${repository.id}`}
+                    value={root}
+                    maxLength={4096}
+                    placeholder="apps/web"
+                    disabled={saving !== null}
+                    aria-describedby="repository-root-help"
+                    onChange={(event) => {
+                      setRootDrafts((draft) => ({
+                        ...draft,
+                        [repository.id]: event.target.value,
+                      }));
+                      setError("");
+                      setNotice("");
+                    }}
+                  />
+                </label>
                 <button
                   type="submit"
                   className="toolbar-button"
-                  disabled={saving !== null || current === value}
+                  disabled={
+                    saving !== null ||
+                    (current === value &&
+                      root === (repository.projectRoot ?? ""))
+                  }
                 >
                   {saving === repository.id ? "Saving…" : "Save assignment"}
                 </button>
@@ -5024,6 +5118,7 @@ function RepositoryDialog({
   const [projectName, setProjectName] = useState("");
   const [name, setName] = useState("");
   const [localPath, setLocalPath] = useState("");
+  const [projectRoot, setProjectRoot] = useState("");
   const [browsing, setBrowsing] = useState(false);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [error, setError] = useState("");
@@ -5052,8 +5147,8 @@ function RepositoryDialog({
       onCreated(
         await createRepository(
           projectMode === "existing"
-            ? { projectMode, projectId, name, localPath }
-            : { projectMode, projectName, name, localPath },
+            ? { projectMode, projectId, name, localPath, projectRoot }
+            : { projectMode, projectName, name, localPath, projectRoot },
         ),
       );
     } catch (caught) {
@@ -5241,6 +5336,31 @@ function RepositoryDialog({
                 </button>
               </div>
               {fieldError(errors, "localPath")}
+            </div>
+            <div className="form-field form-field-wide">
+              <label htmlFor="repository-root">Project directory</label>
+              <input
+                id="repository-root"
+                value={projectRoot}
+                onChange={(event) => {
+                  setProjectRoot(event.target.value);
+                  clearFieldError("projectRoot");
+                }}
+                placeholder="apps/web"
+                maxLength={4096}
+                disabled={saving}
+                aria-invalid={Boolean(errors.projectRoot)}
+                aria-describedby={
+                  errors.projectRoot
+                    ? "projectRoot-error repository-root-help-dialog"
+                    : "repository-root-help-dialog"
+                }
+              />
+              <span id="repository-root-help-dialog">
+                Optional relative directory inside the checkout. Leave blank to
+                open the checkout root.
+              </span>
+              {fieldError(errors, "projectRoot")}
             </div>
           </div>
           {error && (

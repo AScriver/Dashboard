@@ -53,6 +53,7 @@ model Repository {
   version     Int          @default(1)
   archivedAt  DateTime?
   localPath   String?
+  projectRoot String?
   projectId   String
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   worktrees   Worktree[]

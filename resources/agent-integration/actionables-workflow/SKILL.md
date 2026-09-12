@@ -40,6 +40,7 @@ adjacent task.
 - For one direct task or sibling, provide the authorized top-level Actionable as both workItemId and parentId, omit placement fields, and never use a direct task as the parent. The server inherits that root's scope.
 - For a top-level task with known scope IDs, pass `projectId`, `repositoryId`, and `worktreeId`.
 - If the current local Git repository is not tracked yet, pass its absolute path as `repositoryPath` with `ensureScope: true`. The server resolves the Git roots and atomically creates any missing project, repository, or worktree before creating the task.
+- For a tracked monorepo, pass a path inside the intended registered project directory. The deepest matching project directory selects the scope; a sibling or ambiguous checkout-root path must be corrected, or use the known explicit scope IDs.
 - Treat the task detail returned by creation as verification. Do not claim a newly created task only to fetch it again.
 - Creation records the calling Codex thread as creator provenance. Do not dismiss, archive, or delete an invalid, accidental, or disposable task without explicit user authorization. When dismissal is authorized and a task created by this same thread is still active and unclaimed, call `actionables.dismiss_task` with only its ID and a required reason.
 - Automatic scope provisioning does not authorize arbitrary backlog discovery or creation outside the repository and task content the user placed in scope.

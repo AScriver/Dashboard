@@ -354,6 +354,138 @@ describe("Actionables API", () => {
     }
   });
 
+  it("registers project directories, validates launches, and guards edits", async () => {
+    const checkout = resolve(agentHomeDirectory, "monorepo");
+    const linkedCheckout = resolve(agentHomeDirectory, "linked-checkout");
+    await mkdir(resolve(checkout, "apps", "alpha"), { recursive: true });
+    await mkdir(resolve(linkedCheckout, "apps", "alpha"), { recursive: true });
+    const register = (name: string, projectRoot: string | null) =>
+      app!.inject({
+        method: "POST",
+        url: "/api/repositories",
+        payload: {
+          projectMode: "existing",
+          projectId: scope.projectId,
+          name,
+          localPath: checkout,
+          projectRoot,
+        },
+      });
+    const alphaResponse = await register("Monorepo alpha", "apps\\alpha");
+    expect(alphaResponse.statusCode).toBe(201);
+    const alpha = alphaResponse.json();
+    expect((await register("Monorepo beta", "apps/beta")).statusCode).toBe(201);
+    expect((await register("Duplicate alpha", "APPS/ALPHA")).statusCode).toBe(
+      422,
+    );
+    for (const root of [
+      "../outside",
+      "C:\\elsewhere",
+      "/absolute",
+      "apps//alpha",
+      "apps/./alpha",
+    ])
+      expect((await register(`Invalid ${root}`, root)).statusCode).toBe(422);
+    const task = (
+      await app!.inject({
+        method: "POST",
+        url: "/api/actionables",
+        payload: {
+          ...createBody("Project launch"),
+          repositoryId: alpha.repositoryId,
+          worktreeId: alpha.worktreeId,
+        },
+      })
+    ).json().item;
+    expect(task).toMatchObject({
+      projectRoot: "apps/alpha",
+      workspacePath: resolve(checkout, "apps", "alpha"),
+    });
+    const launch = () =>
+      app!.inject({
+        method: "GET",
+        url: `/api/actionables/${task.id}/codex-workspace`,
+      });
+    expect((await launch()).json()).toEqual({
+      path: resolve(checkout, "apps", "alpha"),
+    });
+    await prisma!.worktree.update({
+      where: { id: alpha.worktreeId },
+      data: { localPath: linkedCheckout },
+    });
+    expect((await launch()).json()).toEqual({
+      path: resolve(linkedCheckout, "apps", "alpha"),
+    });
+    const edit = (version: number, projectRoot?: string | null) =>
+      app!.inject({
+        method: "PATCH",
+        url: `/api/repositories/${alpha.repositoryId}/project`,
+        payload: {
+          version,
+          projectId: scope.projectId,
+          ...(projectRoot === undefined ? {} : { projectRoot }),
+        },
+      });
+    await prisma!.agentTaskClaim.create({
+      data: {
+        actionableId: task.recordId,
+        agentId: "project-root-test",
+        claimTokenHash: randomUUID(),
+        leaseExpiresAt: new Date(0),
+      },
+    });
+    expect((await edit(1, "apps/moved")).json().code).toBe(
+      "REPOSITORY_CLAIMED",
+    );
+    await prisma!.agentTaskClaim.delete({
+      where: { actionableId: task.recordId },
+    });
+    expect((await edit(1, "apps/beta")).json().code).toBe(
+      "DUPLICATE_REPOSITORY",
+    );
+    expect((await edit(1, "apps/moved")).statusCode).toBe(200);
+    expect((await edit(1, null)).statusCode).toBe(409);
+    expect((await launch()).json()).toMatchObject({
+      code: "PROJECT_WORKSPACE_UNAVAILABLE",
+      errors: { projectRoot: [expect.stringContaining("missing")] },
+    });
+    expect((await edit(2)).statusCode).toBe(200);
+    expect(
+      (
+        await prisma!.repository.findUniqueOrThrow({
+          where: { id: alpha.repositoryId },
+        })
+      ).projectRoot,
+    ).toBe("apps/moved");
+    await mkdir(resolve(linkedCheckout, "apps", "moved"), { recursive: true });
+    expect((await launch()).json()).toEqual({
+      path: resolve(linkedCheckout, "apps", "moved"),
+    });
+    expect((await edit(2, null)).statusCode).toBe(200);
+    expect((await launch()).json()).toEqual({ path: linkedCheckout });
+    const after = (
+      await app!.inject({ method: "GET", url: `/api/actionables/${task.id}` })
+    ).json().item;
+    expect(after).toMatchObject({
+      id: task.id,
+      version: task.version + 2,
+      projectRoot: null,
+    });
+    expect(
+      after.activity.filter(
+        (event: { type: string }) => event.type === "scope-changed",
+      ),
+    ).toHaveLength(2);
+    expect(
+      (
+        await app!.inject({
+          method: "GET",
+          url: "/api/actionables/999999/codex-workspace",
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+
   it("persists versioned helper settings and scopes runtime overrides independently", async () => {
     const initialResponse = await app!.inject({
       method: "GET",
@@ -2045,7 +2177,16 @@ describe("Actionables API", () => {
     const scopes = await app!.inject({ method: "GET", url: "/api/scopes" });
     expect(scopes.statusCode).toBe(200);
     expect(
-      scopes.json().projects[0].repositories[0].worktrees[0],
+      scopes
+        .json()
+        .projects.flatMap(
+          (project: {
+            repositories: Array<{ id: string; worktrees: unknown[] }>;
+          }) => project.repositories,
+        )
+        .find(
+          (repository: { id: string }) => repository.id === scope.repositoryId,
+        ).worktrees[0],
     ).toMatchObject({
       id: scope.worktreeId,
       name: "main",

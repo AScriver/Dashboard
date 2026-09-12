@@ -3,6 +3,7 @@ import {
   actionableQuerySchema,
   actionablesCorrelationIdSchema,
   actionableDetailResponseSchema,
+  codexWorkspaceResponseSchema,
   actionablesListResponseSchema,
   auditActionableRelationshipsRequestSchema,
   archiveImpactResponseSchema,
@@ -58,6 +59,7 @@ import {
   DomainValidationError,
   getDashboard,
   getActionable,
+  getActionableWorkspace,
   listActionablesWithQuery,
   listScopeOptions,
   recordValidation,
@@ -645,6 +647,24 @@ export function buildApp({
       }
 
       return actionableDetailResponseSchema.parse({ item });
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/api/actionables/:id/codex-workspace",
+    async (request, reply) => {
+      const id = parseRouteId(request, reply, request.params.id);
+      if (id === null) return;
+      const workspace = await getActionableWorkspace(prisma, id);
+      if (!workspace)
+        return problem(
+          request,
+          reply,
+          404,
+          "NOT_FOUND",
+          "Actionable not found.",
+        );
+      return codexWorkspaceResponseSchema.parse(workspace);
     },
   );
 

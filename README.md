@@ -87,6 +87,28 @@ Release active or expired agent claims before moving their repository; restore
 an archived repository or project before changing its assignment. These changes
 affect dashboard organization only and never move folders or modify Git.
 
+For a monorepo, set **Project directory** when adding a repository or under
+**Settings → Repository projects**. Enter a relative directory such as
+`apps/web`; blank keeps the existing checkout-root behavior. Track sibling
+projects as separately named repository entries with the same local checkout
+and their own project directories. The selected entry determines the project;
+Actionables does not infer ownership from titles or attached files.
+
+**Open in Codex** resolves that directory inside the selected worktree (or the
+repository path when no worktree path is saved). It checks that the directory
+exists and stays inside that checkout, including junction resolution. An
+unavailable or invalid configured directory shows an error and retry action;
+it never silently launches at the broader root. Codex loads the applicable
+`AGENTS.md` chain through this working directory, including project-specific
+guidance. A directory moved on disk must be corrected in Settings.
+
+For MCP creation with `ensureScope`, pass a path inside the intended project.
+The deepest matching registered project directory wins; sibling projects stay
+separate. Ambiguous registrations or a checkout-root path that does not select
+any registered project return a correction error. Explicit scope IDs retain
+their existing behavior. Directory edits require released claims and advance
+the affected scope/task versions without changing their IDs or lifecycle.
+
 ## Connect Codex
 
 The Codex connection is opt-in. Generate an `ACTIONABLES_MCP_TOKEN` by following

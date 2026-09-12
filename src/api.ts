@@ -1,5 +1,6 @@
 import {
   actionableDetailResponseSchema,
+  codexWorkspaceResponseSchema,
   actionablesListResponseSchema,
   agentIntegrationInstallResponseSchema,
   agentIntegrationSettingsSchema,
@@ -111,6 +112,15 @@ export async function forceReleaseAgentClaim(
     }),
   );
   return response.item;
+}
+
+/** Check a configured project directory before displaying a Codex launch link. */
+export async function fetchCodexWorkspace(
+  id: number,
+): Promise<{ path: string | null }> {
+  return codexWorkspaceResponseSchema.parse(
+    await requestJson(`/api/actionables/${id}/codex-workspace`),
+  );
 }
 
 export async function fetchScopeOptions(): Promise<ScopeOptionsResponse> {

@@ -368,6 +368,7 @@ export const actionableSummarySchema = z.object({
 
 export const actionableDetailSchema = actionableSummarySchema.extend({
   workspacePath: z.string().max(4_096).nullable(),
+  projectRoot: z.string().max(4_096).nullable().default(null),
   agentClaim: z
     .object({
       agentId: z.string().min(1).max(120),
@@ -446,6 +447,7 @@ export const scopeOptionsResponseSchema = z.object({
         z.object({
           id: z.string().min(1),
           name: z.string().min(1),
+          projectRoot: z.string().max(4_096).nullable().default(null),
           version: z.number().int().positive(),
           archivedAt: z.string().datetime().nullable(),
           archiveState: archiveStateSchema,
@@ -464,7 +466,35 @@ export const scopeOptionsResponseSchema = z.object({
   ),
 });
 
+/** A project directory inside a checkout; blank retains checkout-root behavior. */
+export const repositoryProjectRootSchema = z
+  .string()
+  .trim()
+  .max(4_096)
+  .refine(
+    (value) =>
+      value === "" ||
+      value
+        .split(/[\\/]/)
+        .every(
+          (segment) =>
+            segment.length > 0 &&
+            segment !== "." &&
+            segment !== ".." &&
+            !/[<>:"|?*\u0000-\u001f]/.test(segment) &&
+            !/[. ]$/.test(segment),
+        ),
+    "Use a relative directory inside the checkout, without . or .. segments (for example apps/web).",
+  )
+  .transform((value) => value.replace(/\\/g, "/") || null)
+  .nullable();
+
+export const codexWorkspaceResponseSchema = z.object({
+  path: z.string().max(4_096).nullable(),
+});
+
 const repositoryDetailsRequestSchema = z.object({
+  projectRoot: repositoryProjectRootSchema.default(null),
   name: z.string().trim().min(1, "Enter a repository name.").max(240),
   localPath: z
     .string()
@@ -507,6 +537,7 @@ export const updateRepositoryProjectRequestSchema = z
   .object({
     version: z.number().int().positive(),
     projectId: z.string().min(1).nullable(),
+    projectRoot: repositoryProjectRootSchema.optional(),
   })
   .strict();
 
@@ -1534,7 +1565,7 @@ export const createAgentTaskRequestSchema = z
       )
       .optional()
       .describe(
-        "Local Git repository or worktree path used to resolve or provision a top-level scope.",
+        "Local path inside the intended Git project or worktree. The deepest matching registered project directory selects the scope; ambiguous paths require correction.",
       ),
     ensureScope: z
       .literal(true)

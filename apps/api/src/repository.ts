@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
+  projectWorkspacePath,
+  resolveProjectWorkspace,
+} from "./project-workspace.js";
+import {
   activeActionableExcludeFilterKeys,
   actionableQuerySchema,
   actionableDetailSchema,
@@ -341,7 +345,11 @@ function toDetail(row: ActionableRow): ActionableDetail {
   const now = new Date();
   return actionableDetailSchema.parse({
     ...toSummary(row),
-    workspacePath: row.worktree.localPath ?? row.repository.localPath,
+    workspacePath: projectWorkspacePath(
+      row.worktree.localPath ?? row.repository.localPath,
+      row.repository.projectRoot,
+    ),
+    projectRoot: row.repository.projectRoot,
     agentClaim: row.agentTaskClaim
       ? {
           agentId: row.agentTaskClaim.agentId,
@@ -815,6 +823,7 @@ export async function listScopeOptions(
       repositories: project.repositories.map((repository) => ({
         id: repository.id,
         name: repository.name,
+        projectRoot: repository.projectRoot,
         version: repository.version,
         archivedAt: repository.archivedAt?.toISOString() ?? null,
         archiveState: {
@@ -906,7 +915,14 @@ export async function updateRepositoryProject(
         { projectId: ["Choose an active project."] },
         "The selected project is unavailable.",
       );
-    if (project.id === repository.projectId)
+    const projectRoot =
+      input.projectRoot === undefined
+        ? repository.projectRoot
+        : input.projectRoot;
+    if (
+      project.id === repository.projectId &&
+      projectRoot === repository.projectRoot
+    )
       return listScopeOptions(transaction);
 
     const claim = await transaction.agentTaskClaim.findFirst({
@@ -945,9 +961,35 @@ export async function updateRepositoryProject(
         "This project already contains a repository with that name.",
       );
 
+    if (repository.localPath && projectRoot !== repository.projectRoot) {
+      const others = await transaction.repository.findMany({
+        where: { id: { not: id } },
+        select: { localPath: true, projectRoot: true },
+      });
+      if (
+        others.some(
+          (other) =>
+            other.localPath &&
+            normalizedLocalPath(other.localPath).toLowerCase() ===
+              normalizedLocalPath(repository.localPath!).toLowerCase() &&
+            (other.projectRoot ?? "").toLowerCase() ===
+              (projectRoot ?? "").toLowerCase(),
+        )
+      )
+        throw new DomainValidationError(
+          "DUPLICATE_REPOSITORY",
+          {
+            projectRoot: [
+              "This checkout and project directory are already tracked.",
+            ],
+          },
+          "This project directory is already tracked.",
+        );
+    }
+
     const updated = await transaction.repository.updateMany({
       where: { id, version: input.version },
-      data: { projectId: project.id, version: { increment: 1 } },
+      data: { projectId: project.id, projectRoot, version: { increment: 1 } },
     });
     if (updated.count !== 1)
       throw new ScopeVersionConflictError(repository.version);
@@ -971,12 +1013,17 @@ export async function updateRepositoryProject(
       data: actionables.map((actionable) => ({
         actionableId: actionable.id,
         type: "scope-changed",
-        summary: `Moved repository from ${repository.project.name} to ${project.name}`,
+        summary:
+          project.id === repository.projectId
+            ? "Changed repository project directory"
+            : `Moved repository from ${repository.project.name} to ${project.name}`,
         metadataJson: inputJson({
           origin: "user",
           previousProjectId: repository.projectId,
           projectId: project.id,
           repositoryId: id,
+          previousProjectRoot: repository.projectRoot ?? "",
+          projectRoot: projectRoot ?? "",
         }),
       })),
     });
@@ -1049,7 +1096,12 @@ export async function createRepository(
     }
 
     const repositories = await transaction.repository.findMany({
-      select: { projectId: true, name: true, localPath: true },
+      select: {
+        projectId: true,
+        name: true,
+        localPath: true,
+        projectRoot: true,
+      },
     });
     const errors: Record<string, string[]> = {};
     if (
@@ -1070,10 +1122,14 @@ export async function createRepository(
         (repository) =>
           repository.localPath &&
           normalizedLocalPath(repository.localPath).toLowerCase() ===
-            localPath.toLowerCase(),
+            localPath.toLowerCase() &&
+          (repository.projectRoot ?? "").toLowerCase() ===
+            (input.projectRoot ?? "").toLowerCase(),
       )
     ) {
-      errors.localPath = ["This local repository path is already tracked."];
+      errors.localPath = [
+        "This local repository path is already tracked for that project directory.",
+      ];
     }
     if (Object.keys(errors).length > 0) {
       throw new DomainValidationError(
@@ -1088,6 +1144,7 @@ export async function createRepository(
         externalKey: `manual-repository-${randomUUID()}`,
         name,
         localPath,
+        projectRoot: input.projectRoot,
         projectId,
       },
     });
@@ -1108,6 +1165,38 @@ export async function createRepository(
       scopes: await listScopeOptions(transaction),
     });
   });
+}
+
+/** Resolve the current project's launch directory independently of task editing. */
+export async function getActionableWorkspace(
+  prisma: AppPrismaClient,
+  sourceOrdinal: number,
+): Promise<{ path: string | null } | null> {
+  const task = await prisma.actionable.findUnique({
+    where: { sourceOrdinal },
+    include: { repository: true, worktree: true },
+  });
+  if (!task) return null;
+  try {
+    return {
+      path: await resolveProjectWorkspace(
+        task.worktree.localPath ?? task.repository.localPath,
+        task.repository.projectRoot,
+      ),
+    };
+  } catch (error) {
+    throw new DomainValidationError(
+      "PROJECT_WORKSPACE_UNAVAILABLE",
+      {
+        projectRoot: [
+          error instanceof Error
+            ? error.message
+            : "The project directory is unavailable.",
+        ],
+      },
+      "The configured Codex project directory is unavailable.",
+    );
+  }
 }
 
 export async function getActionable(

@@ -69,6 +69,7 @@ import {
   parsePersistedStatus,
 } from "./actionable-transitions.js";
 import { getAgentCoordinationSettings } from "./helper-agent-settings.js";
+import { isWithinCheckout, projectWorkspacePath } from "./project-workspace.js";
 import {
   createActionable,
   DomainValidationError,
@@ -826,6 +827,7 @@ export type BulkAgentTaskFailureContext = {
 };
 
 type ResolvedRepositoryPlacement = {
+  requestedPath: string;
   repositoryPath: string;
   worktreePath: string;
   projectName: string;
@@ -839,6 +841,16 @@ function sameLocalPath(left: string | null, right: string) {
     normalizedLocalPath(left).toLowerCase() ===
       normalizedLocalPath(right).toLowerCase()
   );
+}
+
+async function sameResolvedLocalPath(left: string | null, right: string) {
+  if (sameLocalPath(left, right)) return true;
+  if (!left) return false;
+  try {
+    return sameLocalPath(await realpath(left), right);
+  } catch {
+    return false;
+  }
 }
 
 function invalidRepositoryPath(message: string) {
@@ -894,6 +906,7 @@ async function resolveRepositoryPlacement(
   );
   const repositoryName = basename(repositoryPath);
   return {
+    requestedPath: normalizedLocalPath(localPath),
     repositoryPath,
     worktreePath,
     projectName: repositoryName,
@@ -911,15 +924,62 @@ async function findResolvedAgentTaskScope(
   const repositories = await client.repository.findMany({
     include: { project: true, worktrees: true },
   });
-  const repository = repositories.find(
-    (candidate) =>
-      sameLocalPath(candidate.localPath, placement.repositoryPath) ||
-      candidate.worktrees.some((worktree) =>
-        sameLocalPath(worktree.localPath, placement.worktreePath),
+  const candidates = (
+    await Promise.all(
+      repositories.map(async (candidate) => {
+        const repositoryMatches = await sameResolvedLocalPath(
+          candidate.localPath,
+          placement.repositoryPath,
+        );
+        const worktreeMatches =
+          repositoryMatches ||
+          (
+            await Promise.all(
+              candidate.worktrees.map((worktree) =>
+                sameResolvedLocalPath(
+                  worktree.localPath,
+                  placement.worktreePath,
+                ),
+              ),
+            )
+          ).some(Boolean);
+        return worktreeMatches ? candidate : null;
+      }),
+    )
+  ).filter((candidate) => candidate !== null);
+  const matching = candidates
+    .map((repository) => ({
+      repository,
+      directory: projectWorkspacePath(
+        placement.worktreePath,
+        repository.projectRoot,
       ),
-  );
-  const worktree = repository?.worktrees.find((candidate) =>
-    sameLocalPath(candidate.localPath, placement.worktreePath),
+    }))
+    .filter(
+      (candidate) =>
+        candidate.directory &&
+        isWithinCheckout(candidate.directory, placement.requestedPath),
+    )
+    .sort((left, right) => right.directory!.length - left.directory!.length);
+  if (
+    candidates.length &&
+    (!matching.length ||
+      (matching[1] &&
+        matching[0]!.directory!.length === matching[1].directory!.length))
+  )
+    throw invalidRepositoryPath(
+      "The repository path does not identify one registered project. Use a path inside the intended project directory or explicit project/repository/worktree IDs.",
+    );
+  const repository = matching[0]?.repository;
+  const worktreeMatches = repository
+    ? await Promise.all(
+        repository.worktrees.map((candidate) =>
+          sameResolvedLocalPath(candidate.localPath, placement.worktreePath),
+        ),
+      )
+    : [];
+  const worktree = repository?.worktrees.find(
+    (_, index) => worktreeMatches[index],
   );
   return { repository, worktree };
 }
@@ -980,7 +1040,7 @@ async function ensureAgentTaskScope(
     const createdWorktree = await transaction.worktree.create({
       data: {
         externalKey: `agent-scope-worktree-${hashToken(
-          placement.worktreePath.toLowerCase(),
+          `${repository.id}:${placement.worktreePath.toLowerCase()}`,
         )}`,
         name: placement.worktreeName,
         localPath: placement.worktreePath,
