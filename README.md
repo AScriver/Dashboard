@@ -109,6 +109,17 @@ any registered project return a correction error. Explicit scope IDs retain
 their existing behavior. Directory edits require released claims and advance
 the affected scope/task versions without changing their IDs or lifecycle.
 
+## Default scope for new Actionables
+
+Under **Settings → Default actionable scope**, select a project / repository /
+worktree and choose **Save default scope**. This preference is saved in the
+current browser. A current scope selection takes precedence; without one,
+creation uses the saved worktree or the first complete active scope if that
+worktree was archived or removed. Repository reassignment follows the same
+worktree under its current project. **Clear default scope** restores the normal
+available-scope fallback. New items still start as Inbox, with Unset priority,
+Unknown effort and Unclassified evidence. Existing items are unaffected.
+
 ## Connect Codex
 
 The Codex connection is opt-in. Generate an `ACTIONABLES_MCP_TOKEN` by following

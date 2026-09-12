@@ -119,6 +119,12 @@ import {
   waiveDependency,
 } from "./api";
 import {
+  availableCreationScopes,
+  defaultCreationWorktreeStorageKey,
+  readDefaultCreationWorktree,
+  resolveCreationScope,
+} from "./creation-scope";
+import {
   activityEventCategory,
   groupActivityByAgentSession,
 } from "./activity-timeline";
@@ -2489,26 +2495,20 @@ function emptyDraft(
     worktreeId?: string;
   },
 ): ActionableDraft {
-  const project =
-    scopes.projects.find((item) => item.id === initialScope?.projectId) ??
-    scopes.projects[0];
-  const repository =
-    project?.repositories.find(
-      (item) => item.id === initialScope?.repositoryId,
-    ) ?? project?.repositories[0];
-  const worktree =
-    repository?.worktrees.find(
-      (item) => item.id === initialScope?.worktreeId,
-    ) ?? repository?.worktrees[0];
+  const scope = resolveCreationScope(
+    scopes,
+    initialScope,
+    readDefaultCreationWorktree(),
+  );
   return {
     title: "",
     priority: "Unset",
     status: "Inbox",
     effort: "Unknown",
     evidenceState: "Unclassified",
-    projectId: project?.id ?? "",
-    repositoryId: repository?.id ?? "",
-    worktreeId: worktree?.id ?? "",
+    projectId: scope?.projectId ?? "",
+    repositoryId: scope?.repositoryId ?? "",
+    worktreeId: scope?.worktreeId ?? "",
     finding: "",
     description: "",
     resolution: "",
@@ -3985,6 +3985,134 @@ function DashboardPanel({
   );
 }
 
+/** Persist a browser-local default without changing current scope or existing work. */
+function DefaultCreationScopeSection() {
+  const scopesQuery = useQuery({
+    queryKey: ["scopes"],
+    queryFn: fetchScopeOptions,
+  });
+  const [saved, setSaved] = useState(readDefaultCreationWorktree);
+  const [draft, setDraft] = useState(saved ?? "");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const options = scopesQuery.data
+    ? availableCreationScopes(scopesQuery.data)
+    : [];
+  const unavailable = Boolean(
+    saved &&
+    scopesQuery.isSuccess &&
+    !options.some((scope) => scope.worktreeId === saved),
+  );
+  const save = (worktreeId: string) => {
+    setError("");
+    setNotice("");
+    try {
+      if (worktreeId)
+        localStorage.setItem(defaultCreationWorktreeStorageKey, worktreeId);
+      else localStorage.removeItem(defaultCreationWorktreeStorageKey);
+      setSaved(worktreeId || null);
+      setDraft(worktreeId);
+      setNotice(
+        worktreeId
+          ? "Default scope saved for this browser."
+          : "Default scope cleared.",
+      );
+    } catch {
+      setError(
+        "Could not save the default scope. Allow browser storage and try again. You can still choose a scope when creating an Actionable.",
+      );
+    }
+  };
+  return (
+    <section
+      className="settings-integration settings-form"
+      aria-labelledby="default-creation-scope-title"
+    >
+      <h2 id="default-creation-scope-title">Default actionable scope</h2>
+      <p id="default-creation-scope-help">
+        Used for new Actionables in this browser when no current scope is
+        selected. Your current scope takes precedence. If the default is
+        archived or removed, an available scope is used.
+      </p>
+      {scopesQuery.isPending && <p role="status">Loading scopes…</p>}
+      {scopesQuery.isError && (
+        <div role="alert">
+          Could not load scopes.{" "}
+          <button
+            type="button"
+            className="toolbar-button"
+            onClick={() => void scopesQuery.refetch()}
+          >
+            Retry scopes
+          </button>
+        </div>
+      )}
+      <div className="form-field">
+        <label htmlFor="default-creation-scope">Default scope</label>
+        <select
+          id="default-creation-scope"
+          value={draft}
+          disabled={!scopesQuery.isSuccess}
+          aria-describedby="default-creation-scope-help"
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setError("");
+            setNotice("");
+          }}
+        >
+          <option value="">No saved default</option>
+          {unavailable && (
+            <option value={saved!} disabled>
+              Unavailable saved scope
+            </option>
+          )}
+          {options.map((scope) => (
+            <option key={scope.worktreeId} value={scope.worktreeId}>
+              {scope.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {unavailable && (
+        <p>
+          Saved scope is unavailable. New Actionables will use an available
+          scope.
+        </p>
+      )}
+      <div className="agent-start-actions">
+        <button
+          type="button"
+          className="toolbar-button"
+          disabled={
+            !scopesQuery.isSuccess ||
+            draft === (saved ?? "") ||
+            Boolean(
+              draft && !options.some((scope) => scope.worktreeId === draft),
+            )
+          }
+          onClick={() => save(draft)}
+        >
+          Save default scope
+        </button>
+        <button
+          type="button"
+          className="toolbar-button"
+          disabled={!saved && !draft}
+          onClick={() => save("")}
+        >
+          Clear default scope
+        </button>
+      </div>
+      {error && (
+        <p className="inline-error" role="alert">
+          {error}
+        </p>
+      )}
+      {notice && <p role="status">{notice}</p>}
+    </section>
+  );
+}
+
 /** Manage repository membership while preserving its worktrees and work. */
 function RepositoryAssignmentsSection() {
   const queryClient = useQueryClient();
@@ -4101,7 +4229,7 @@ function RepositoryAssignmentsSection() {
               <form
                 key={repository.id}
                 className="repository-assignment"
-                aria-label={`Project assignment for ${repository.name}`}
+                aria-label={`Project assignment for ${repository.name} in ${project.name}`}
                 onSubmit={(event) => {
                   event.preventDefault();
                   void save(repository.id, repository.version, value, root);
@@ -4484,6 +4612,7 @@ function SettingsPanel() {
         </div>
       </header>
       <AgentIntegrationSettingsSection />
+      <DefaultCreationScopeSection />
       <RepositoryAssignmentsSection />
       <form
         className="settings-form"
