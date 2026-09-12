@@ -367,6 +367,18 @@ export const actionableSummarySchema = z.object({
 });
 
 export const actionableDetailSchema = actionableSummarySchema.extend({
+  directTaskProgress: z
+    .object({
+      total: z.number().int().nonnegative(),
+      completed: z.number().int().nonnegative(),
+      dismissed: z.number().int().nonnegative(),
+      open: z.number().int().nonnegative(),
+      blocked: z.number().int().nonnegative(),
+      unclaimed: z.number().int().nonnegative(),
+      validationReady: z.number().int().nonnegative(),
+    })
+    .nullable()
+    .default(null),
   workspacePath: z.string().max(4_096).nullable(),
   projectRoot: z.string().max(4_096).nullable().default(null),
   agentClaim: z

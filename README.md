@@ -109,6 +109,16 @@ any registered project return a correction error. Explicit scope IDs retain
 their existing behavior. Directory edits require released claims and advance
 the affected scope/task versions without changing their IDs or lifecycle.
 
+## Work-item progress
+
+Parents with direct tasks show **Work-item progress** in the **Relationships**
+tab: completed, dismissed, open, blocked, unclaimed and validation-ready counts.
+All attached direct tasks count, including archived tasks. Blocked and unclaimed
+are subsets of open; an expired claim remains claimed until released.
+Validation ready means a current, unsuperseded Passed record under the existing
+completion policy. The parent still needs its own validation and every direct
+task must be Done or Dismissed before parent completion.
+
 ## Default scope for new Actionables
 
 Under **Settings → Default actionable scope**, select a project / repository /

@@ -810,6 +810,44 @@ function RelationshipSection({
           </button>
         </div>
       )}
+      {selected.directTaskProgress && (
+        <section aria-labelledby={`work-item-progress-${selected.id}`}>
+          <h3 id={`work-item-progress-${selected.id}`}>Work-item progress</h3>
+          <p>
+            All attached direct tasks, including archived. Blocked and unclaimed
+            are subsets of open; validation ready means current Passed evidence.
+          </p>
+          <dl className="agent-claim-details work-item-progress">
+            <div>
+              <dt>Completed</dt>
+              <dd>
+                {selected.directTaskProgress.completed} /{" "}
+                {selected.directTaskProgress.total}
+              </dd>
+            </div>
+            <div>
+              <dt>Dismissed</dt>
+              <dd>{selected.directTaskProgress.dismissed}</dd>
+            </div>
+            <div>
+              <dt>Open</dt>
+              <dd>{selected.directTaskProgress.open}</dd>
+            </div>
+            <div>
+              <dt>Blocked</dt>
+              <dd>{selected.directTaskProgress.blocked}</dd>
+            </div>
+            <div>
+              <dt>Unclaimed</dt>
+              <dd>{selected.directTaskProgress.unclaimed}</dd>
+            </div>
+            <div>
+              <dt>Validation ready</dt>
+              <dd>{selected.directTaskProgress.validationReady}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
       <div className="relationship-group">
         <h3>
           Subtasks <span>{selected.relationships.subtasks.length}</span>

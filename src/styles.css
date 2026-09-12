@@ -1448,6 +1448,10 @@ button {
   min-width: 0;
 }
 
+.agent-claim-details.work-item-progress {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .agent-claim-details dt {
   color: var(--text-faint);
   font-size: 9px;

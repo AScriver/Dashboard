@@ -65,7 +65,20 @@ const actionableInclude = {
     where: { detachedAt: null },
     orderBy: { createdAt: "asc" as const },
     include: {
-      child: { include: { project: true, repository: true, worktree: true } },
+      child: {
+        include: {
+          project: true,
+          repository: true,
+          worktree: true,
+          agentTaskClaim: true,
+          statusHistory: { orderBy: { occurredAt: "desc" as const } },
+          validationRecords: { orderBy: { recordedAt: "asc" as const } },
+          dependenciesAsDependent: {
+            where: { removedAt: null },
+            include: { prerequisite: { select: { status: true } } },
+          },
+        },
+      },
     },
   },
   hierarchyAsChild: {
@@ -142,14 +155,16 @@ function stringContext(value: Prisma.JsonValue): Record<string, string> {
   );
 }
 
-function latestInProgressAt(row: ActionableRow) {
+function latestInProgressAt(row: Pick<ActionableRow, "statusHistory">) {
   return (
     row.statusHistory.find((entry) => entry.newStatus === "In progress")
       ?.occurredAt ?? null
   );
 }
 
-function qualifyingValidationIds(row: ActionableRow) {
+function qualifyingValidationIds(
+  row: Pick<ActionableRow, "statusHistory" | "validationRecords">,
+) {
   const startedAt = latestInProgressAt(row);
   if (!startedAt) return new Set<string>();
   const superseded = new Set(
@@ -169,7 +184,9 @@ function qualifyingValidationIds(row: ActionableRow) {
   );
 }
 
-function latestQualifyingValidationId(row: ActionableRow) {
+function latestQualifyingValidationId(
+  row: Pick<ActionableRow, "statusHistory" | "validationRecords">,
+) {
   const qualifying = qualifyingValidationIds(row);
   return (
     [...row.validationRecords]
@@ -331,6 +348,12 @@ function toSummary(row: ActionableRow): ActionableSummary {
 }
 
 function toDetail(row: ActionableRow): ActionableDetail {
+  const children = row.hierarchyAsParent.map(
+    (relationship) => relationship.child,
+  );
+  const openChildren = children.filter(
+    (child) => child.status !== "Done" && child.status !== "Dismissed",
+  );
   const status = parsePersistedStatus(row.status);
   const imported = row.importProvider !== "MANUAL";
   const qualifying = qualifyingValidationIds(row);
@@ -345,6 +368,29 @@ function toDetail(row: ActionableRow): ActionableDetail {
   const now = new Date();
   return actionableDetailSchema.parse({
     ...toSummary(row),
+    directTaskProgress: children.length
+      ? {
+          total: children.length,
+          completed: children.filter((child) => child.status === "Done").length,
+          dismissed: children.filter((child) => child.status === "Dismissed")
+            .length,
+          open: openChildren.length,
+          blocked: openChildren.filter(
+            (child) =>
+              child.status === "Blocked" ||
+              child.dependenciesAsDependent.some(
+                (dependency) =>
+                  !dependency.waivedAt &&
+                  dependency.prerequisite.status !== "Done",
+              ),
+          ).length,
+          unclaimed: openChildren.filter((child) => !child.agentTaskClaim)
+            .length,
+          validationReady: children.filter(
+            (child) => latestQualifyingValidationId(child) !== null,
+          ).length,
+        }
+      : null,
     workspacePath: projectWorkspacePath(
       row.worktree.localPath ?? row.repository.localPath,
       row.repository.projectRoot,

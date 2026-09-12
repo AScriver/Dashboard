@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 
 test("relationships remain compact, navigable, responsive, and derived-blocking is explicit", async ({
   page,
@@ -66,12 +67,39 @@ test("relationships remain compact, navigable, responsive, and derived-blocking 
     .getByRole("button", { name: "Create" })
     .click();
   await expect(page.getByRole("heading", { name: /Subtasks 1/ })).toBeVisible();
+  const progress = page.getByRole("region", { name: "Work-item progress" });
+  await expect(progress).toBeVisible();
+  await expect(
+    progress
+      .locator("div")
+      .filter({ has: page.getByText("Open", { exact: true }) }),
+  ).toHaveText("Open1");
+  await expect(
+    progress
+      .locator("div")
+      .filter({ has: page.getByText("Unclaimed", { exact: true }) }),
+  ).toHaveText("Unclaimed1");
   await expect(
     page.getByRole("button", { name: /T-003 browser subtask/ }),
   ).toBeVisible();
   await page.getByLabel("Task breakdown template").selectOption("feature");
   await page.getByRole("button", { name: "Apply template" }).click();
   await expect(page.getByRole("heading", { name: /Subtasks 5/ })).toBeVisible();
+  await expect(
+    progress
+      .locator("div")
+      .filter({ has: page.getByText("Completed", { exact: true }) }),
+  ).toHaveText("Completed0 / 5");
+  await expect(
+    progress
+      .locator("div")
+      .filter({ has: page.getByText("Open", { exact: true }) }),
+  ).toHaveText("Open5");
+  await expect(
+    progress
+      .locator("div")
+      .filter({ has: page.getByText("Validation ready", { exact: true }) }),
+  ).toHaveText("Validation ready0");
   await expect(
     page.getByRole("button", { name: /Define acceptance criteria/ }),
   ).toBeVisible();
@@ -86,6 +114,8 @@ test("relationships remain compact, navigable, responsive, and derived-blocking 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   await inspector.getByRole("tab", { name: "Relationships" }).click();
+  await expect(progress).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await expect(
     page.getByRole("heading", { name: /Blocked by 1/ }),
   ).toBeVisible();

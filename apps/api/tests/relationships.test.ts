@@ -136,6 +136,111 @@ async function move(
 }
 
 describe("hierarchy relationships", () => {
+  it("rolls up attached direct tasks using real claim, dependency and validation state", async () => {
+    const parent = await create("Progress rollup parent");
+    expect(parent.directTaskProgress).toBeNull();
+    const statuses = [
+      "Done",
+      "Dismissed",
+      "In progress",
+      "Blocked",
+      "Ready",
+      "Inbox",
+    ];
+    const children: Array<{ id: number; recordId: string }> = [];
+    const phase = new Date(Date.now() - 60_000);
+    for (const [index, status] of statuses.entries()) {
+      const child = await create(`Progress child ${index}`);
+      children.push(child);
+      await prisma.hierarchyRelationship.create({
+        data: { parentId: parent.recordId, childId: child.recordId },
+      });
+      await prisma.actionable.update({
+        where: { id: child.recordId },
+        data: { status, ...(index === 5 ? { archivedAt: new Date() } : {}) },
+      });
+      await prisma.actionableStatusHistory.create({
+        data: {
+          actionableId: child.recordId,
+          previousStatus: "Ready",
+          newStatus: "In progress",
+          origin: "fixture",
+          occurredAt: phase,
+        },
+      });
+    }
+    for (const index of [2, 4])
+      await prisma.agentTaskClaim.create({
+        data: {
+          actionableId: children[index].recordId,
+          agentId: "rollup-fixture",
+          claimTokenHash: randomUUID(),
+          leaseExpiresAt: new Date(
+            Date.now() + (index === 2 ? 60_000 : -60_000),
+          ),
+        },
+      });
+    const edge = await prisma.dependencyRelationship.create({
+      data: {
+        dependentId: children[4].recordId,
+        prerequisiteId: children[1].recordId,
+      },
+    });
+    const validation = (
+      index: number,
+      recordedAt: Date,
+      outcome = "Passed",
+      supersedesId?: string,
+    ) =>
+      prisma.validationRecord.create({
+        data: {
+          actionableId: children[index].recordId,
+          type: "Automated test",
+          outcome,
+          notesMd: "Fixture",
+          evidenceMd: "Fixture",
+          origin: "fixture",
+          recordedAt,
+          supersedesId,
+        },
+      });
+    await validation(0, new Date());
+    await validation(2, new Date(phase.getTime() - 1));
+    const superseded = await validation(3, new Date());
+    await validation(3, new Date(), "Failed", superseded.id);
+    expect((await get(parent.id)).directTaskProgress).toEqual({
+      total: 6,
+      completed: 1,
+      dismissed: 1,
+      open: 4,
+      blocked: 2,
+      unclaimed: 2,
+      validationReady: 1,
+    });
+    await validation(2, new Date());
+    await prisma.dependencyRelationship.update({
+      where: { id: edge.id },
+      data: { waivedAt: new Date(), waiverReason: "Fixture waiver" },
+    });
+    await prisma.agentTaskClaim.delete({
+      where: { actionableId: children[4].recordId },
+    });
+    await prisma.hierarchyRelationship.updateMany({
+      where: { childId: children[5].recordId },
+      data: { detachedAt: new Date() },
+    });
+    expect((await get(parent.id)).directTaskProgress).toEqual({
+      total: 5,
+      completed: 1,
+      dismissed: 1,
+      open: 3,
+      blocked: 1,
+      unclaimed: 2,
+      validationReady: 2,
+    });
+    expect((await get(children[0].id)).directTaskProgress).toBeNull();
+  });
+
   it.each([
     [
       "bug",
